@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "4Xu4HaTUWTA=",
+  "success": true,
+  "projectFilePath": "G:\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\zhuchuovo\\.nuget\\packages\\sunnyui\\3.9.6\\sunnyui.3.9.6.nupkg.sha512",
+    "C:\\Users\\zhuchuovo\\.nuget\\packages\\sunnyui.common\\3.9.6\\sunnyui.common.3.9.6.nupkg.sha512"
+  ],
+  "logs": []
+}
