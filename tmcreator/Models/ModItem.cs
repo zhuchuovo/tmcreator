@@ -8,7 +8,9 @@ public enum ItemType
     Weapon,
     Block,
     Item,
-    Buff
+    Buff,
+    Projectile,
+    Accessory
 }
 
 public enum ModDamageKind
@@ -53,6 +55,7 @@ public class ModItemData
     public int Damage { get; set; }
     public ModDamageKind DamageKind { get; set; } = ModDamageKind.Melee;
     public int UseTime { get; set; } = 30;
+    public int UseStyleId { get; set; } = 1;
     public int Knockback { get; set; }
     public int CriticalChance { get; set; } = 4;
     public bool UsesProjectile { get; set; }
@@ -69,7 +72,24 @@ public class ModItemData
     public int Rarity { get; set; }
     public int MinPick { get; set; }
 
+    public int AccessoryMeleeDamage { get; set; }
+    public int AccessoryMagicDamage { get; set; }
+    public int AccessoryRangedDamage { get; set; }
+    public int AccessorySummonDamage { get; set; }
+    public int AccessoryMeleeSpeed { get; set; }
+    public int AccessoryMagicSpeed { get; set; }
+    public int AccessoryRangedSpeed { get; set; }
+    public int AccessorySummonSpeed { get; set; }
+    public int AccessoryMeleeCrit { get; set; }
+    public int AccessoryMagicCrit { get; set; }
+    public int AccessoryRangedCrit { get; set; }
+    public int AccessorySummonCrit { get; set; }
+    public int AccessoryDefense { get; set; }
+    public int AccessoryDamageReduction { get; set; }
+
     public string TexturePath { get; set; } = string.Empty;
+    public bool IsMultiFrameTexture { get; set; }
+    public int TextureFrameCount { get; set; } = 1;
     public BuffIconSource BuffIconSource { get; set; } = BuffIconSource.Custom;
     public int VanillaBuffIconId { get; set; } = 1;
     public FlowScript? Flow { get; set; }
@@ -86,6 +106,8 @@ public class ModItemData
         ItemType.Block => "方块",
         ItemType.Item => "物品",
         ItemType.Buff => "Buff",
+        ItemType.Projectile => "弹幕",
+        ItemType.Accessory => "饰品",
         _ => "未知"
     };
 

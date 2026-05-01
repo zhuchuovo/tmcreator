@@ -45,6 +45,22 @@ namespace tmcreator
             "buff_on_end"
         };
 
+        private static readonly HashSet<string> ProjectileEventIds = new()
+        {
+            "projectile_on_spawn",
+            "projectile_on_hit_npc",
+            "projectile_on_hit_player",
+            "projectile_update"
+        };
+
+        private static readonly HashSet<string> AccessoryEventIds = new()
+        {
+            "accessory_wearing",
+            "accessory_attack",
+            "accessory_unequip",
+            "accessory_equip"
+        };
+
         private static readonly Color ClrBg = Color.FromArgb(14, 20, 28);
         private static readonly Color ClrPanel = Color.FromArgb(22, 31, 43);
         private static readonly Color ClrCanvas = Color.FromArgb(15, 23, 33);
@@ -227,9 +243,13 @@ namespace tmcreator
             if (category != BlockCategory.Event)
                 return definitions;
 
-            return _item.Type == ItemType.Buff
-                ? definitions.Where(definition => BuffEventIds.Contains(definition.Id))
-                : definitions.Where(definition => ItemEventIds.Contains(definition.Id));
+            return _item.Type switch
+            {
+                ItemType.Buff => definitions.Where(definition => BuffEventIds.Contains(definition.Id)),
+                ItemType.Projectile => definitions.Where(definition => ProjectileEventIds.Contains(definition.Id)),
+                ItemType.Accessory => definitions.Where(definition => AccessoryEventIds.Contains(definition.Id)),
+                _ => definitions.Where(definition => ItemEventIds.Contains(definition.Id))
+            };
         }
 
         private void BuildWorkspace()
@@ -820,6 +840,8 @@ namespace tmcreator
                 combo.Items.AddRange(param.Options);
                 string current = block.ParamValues.GetValueOrDefault(param.Name, param.DefaultValue);
                 int selected = Array.IndexOf(param.Options, current);
+                if (selected < 0)
+                    selected = Array.FindIndex(param.Options, option => option.StartsWith(current + " ", StringComparison.Ordinal));
                 combo.SelectedIndex = selected >= 0 ? selected : 0;
                 combo.Tag = new ParamTag { Block = block, ParamName = param.Name };
                 combo.SelectedIndexChanged += ParamCombo_Changed;

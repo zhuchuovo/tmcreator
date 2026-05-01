@@ -88,3 +88,4 @@ G:\csharp\tmcreator\tmcreator\bin\CodexVerify\tmcreator.dll
 G:\csharp\tmcreator\tmcreator\bin\CodexVerify\tmcreator.pdb
 G:\csharp\tmcreator\tmcreator\bin\CodexVerify\SunnyUI.dll
 G:\csharp\tmcreator\tmcreator\bin\CodexVerify\SunnyUI.Common.dll
+G:\csharp\tmcreator\tmcreator\obj\Debug\net10.0-windows\tmcreator.sourcelink.json

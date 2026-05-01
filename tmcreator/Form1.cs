@@ -9,6 +9,7 @@ namespace tmcreator
     public partial class Form1 : UIForm
     {
         private readonly List<ModItemData> _items = new();
+        private ModItemData? _editingItem;
 
         private Panel? _headerPanel;
         private Label? _projectStatusLabel;
@@ -23,6 +24,7 @@ namespace tmcreator
         private Panel? _toolSection;
         private Panel? _combatSection;
         private Panel? _blockSection;
+        private Panel? _accessorySection;
         private Panel? _buffSection;
         private Panel? _recipeSection;
         private Label? _rightSubtitleLabel;
@@ -31,9 +33,26 @@ namespace tmcreator
         private readonly UIComboBox cmbBuffIconSource = new();
         private readonly UICheckBox chkUsesProjectile = new();
         private readonly UICheckBox chkConsumeOnUse = new();
+        private readonly UICheckBox chkMultiFrameTexture = new();
         private readonly NumericUpDown numProjectileId = new();
         private readonly NumericUpDown numProjectileSpeed = new();
         private readonly NumericUpDown numVanillaBuffIconId = new();
+        private readonly NumericUpDown numUseStyleId = new();
+        private readonly NumericUpDown numTextureFrameCount = new();
+        private readonly NumericUpDown numAccessoryMeleeDamage = new();
+        private readonly NumericUpDown numAccessoryMagicDamage = new();
+        private readonly NumericUpDown numAccessoryRangedDamage = new();
+        private readonly NumericUpDown numAccessorySummonDamage = new();
+        private readonly NumericUpDown numAccessoryMeleeSpeed = new();
+        private readonly NumericUpDown numAccessoryMagicSpeed = new();
+        private readonly NumericUpDown numAccessoryRangedSpeed = new();
+        private readonly NumericUpDown numAccessorySummonSpeed = new();
+        private readonly NumericUpDown numAccessoryMeleeCrit = new();
+        private readonly NumericUpDown numAccessoryMagicCrit = new();
+        private readonly NumericUpDown numAccessoryRangedCrit = new();
+        private readonly NumericUpDown numAccessorySummonCrit = new();
+        private readonly NumericUpDown numAccessoryDefense = new();
+        private readonly NumericUpDown numAccessoryDamageReduction = new();
         private readonly UIButton btnEditRecipe = new();
         private readonly Label lblRecipeSummary = new();
         private readonly UIButton btnNewProject = new();
@@ -54,6 +73,22 @@ namespace tmcreator
             "buff_on_gain",
             "buff_update",
             "buff_on_end"
+        };
+
+        private static readonly HashSet<string> ProjectileFlowEventIds = new()
+        {
+            "projectile_on_spawn",
+            "projectile_update",
+            "projectile_on_hit_npc",
+            "projectile_on_hit_player"
+        };
+
+        private static readonly HashSet<string> AccessoryFlowEventIds = new()
+        {
+            "accessory_wearing",
+            "accessory_attack",
+            "accessory_unequip",
+            "accessory_equip"
         };
 
         private static readonly Color ClrBg = Color.FromArgb(14, 20, 28);
@@ -132,7 +167,7 @@ namespace tmcreator
             {
                 Text = "Terraria Mod 制作器",
                 AutoSize = false,
-                Location = new Point(26, 16),
+                Location = new Point(26, 14),
                 Size = new Size(360, 34),
                 Font = FontTitle,
                 ForeColor = ClrText,
@@ -143,7 +178,7 @@ namespace tmcreator
             {
                 Text = "",
                 AutoSize = false,
-                Location = new Point(28, 51),
+                Location = new Point(28, 54),
                 Size = new Size(520, 22),
                 Font = FontBody,
                 ForeColor = ClrSubText,
@@ -232,6 +267,7 @@ namespace tmcreator
             BuildBasicSection();
             BuildToolSection();
             BuildCombatSection();
+            BuildAccessorySection();
             BuildBlockSection();
             BuildBuffSection();
             BuildRecipeSection();
@@ -257,7 +293,7 @@ namespace tmcreator
             cmbItemType.Size = new Size(230, 30);
             cmbItemType.Font = FontBody;
             cmbItemType.Items.Clear();
-            cmbItemType.Items.AddRange(new object[] { "工具", "武器", "方块", "物品", "Buff" });
+            cmbItemType.Items.AddRange(new object[] { "工具", "武器", "方块", "物品", "Buff", "弹幕", "饰品" });
             cmbItemType.SelectedIndex = 3;
             StyleComboBox(cmbItemType);
             _identitySection.Controls.Add(cmbItemType);
@@ -289,14 +325,24 @@ namespace tmcreator
 
         private void BuildTextureSection()
         {
-            _textureSection = CreateSection("贴图", "可选 PNG，会随物品一起导出", 118);
+            _textureSection = CreateSection("贴图", "可选 PNG，会随内容一起导出", 156);
 
-            picTexture.Location = new Point(18, 54);
-            picTexture.Size = new Size(60, 60);
+            var texturePreview = new Panel
+            {
+                Location = new Point(18, 54),
+                Size = new Size(62, 62),
+                BackColor = ClrInputBg,
+                Padding = new Padding(6)
+            };
+            texturePreview.Paint += TexturePreview_Paint;
+            _textureSection.Controls.Add(texturePreview);
+
+            picTexture.Dock = DockStyle.Fill;
+            picTexture.Margin = new Padding(0);
             picTexture.BackColor = ClrInputBg;
-            picTexture.BorderStyle = BorderStyle.FixedSingle;
+            picTexture.BorderStyle = BorderStyle.None;
             picTexture.SizeMode = PictureBoxSizeMode.Zoom;
-            _textureSection.Controls.Add(picTexture);
+            texturePreview.Controls.Add(picTexture);
 
             AddFieldLabel(_textureSection, "预览", 100, 55, 70);
 
@@ -316,6 +362,19 @@ namespace tmcreator
             btnClearTexture.Font = FontBody;
             StyleButton(btnClearTexture, Color.FromArgb(67, 83, 105), ClrBorder);
             _textureSection.Controls.Add(btnClearTexture);
+
+            chkMultiFrameTexture.Text = "多帧图";
+            chkMultiFrameTexture.Location = new Point(18, 122);
+            chkMultiFrameTexture.Size = new Size(82, 24);
+            chkMultiFrameTexture.Font = FontBody;
+            chkMultiFrameTexture.ForeColor = ClrText;
+            chkMultiFrameTexture.BackColor = Color.Transparent;
+            _textureSection.Controls.Add(chkMultiFrameTexture);
+
+            AddNumericField(_textureSection, "播放帧数", numTextureFrameCount, 118, 120, 72);
+            numTextureFrameCount.Minimum = 1;
+            numTextureFrameCount.Maximum = 999;
+            numTextureFrameCount.Value = 1;
 
             _formStack?.Controls.Add(_textureSection);
         }
@@ -341,7 +400,7 @@ namespace tmcreator
 
         private void BuildCombatSection()
         {
-            _combatSection = CreateSection("战斗手感", "伤害、职业、投掷物与消耗", 260);
+            _combatSection = CreateSection("战斗手感", "伤害、职业、攻击动作与投掷物", 300);
             AddNumericField(_combatSection, "伤害", numDamage, 18, 58, 72);
             AddNumericField(_combatSection, "使用时间", numUseTime, 196, 58, 72);
             AddNumericField(_combatSection, "击退", numKnockback, 18, 98, 72);
@@ -379,6 +438,11 @@ namespace tmcreator
             chkUsesProjectile.Font = FontBody;
             chkUsesProjectile.ForeColor = ClrText;
             chkUsesProjectile.BackColor = Color.Transparent;
+            chkUsesProjectile.CheckedChanged += (s, e) =>
+            {
+                if (chkUsesProjectile.Checked && numUseStyleId.Value == 1)
+                    numUseStyleId.Value = 5;
+            };
             _combatSection.Controls.Add(chkUsesProjectile);
 
             chkConsumeOnUse.Text = "使用时消耗本体";
@@ -399,7 +463,69 @@ namespace tmcreator
             numProjectileSpeed.Maximum = 99;
             numProjectileSpeed.Value = 10;
 
+            AddNumericField(_combatSection, "动作ID", numUseStyleId, 18, 242, 72);
+            numUseStyleId.Minimum = 0;
+            numUseStyleId.Maximum = 9999;
+            numUseStyleId.Value = 1;
+
             _formStack?.Controls.Add(_combatSection);
+        }
+
+        private void BuildAccessorySection()
+        {
+            _accessorySection = CreateSection("饰品加成", "职业伤害、攻速、暴击、防御与减伤", 290);
+
+            _accessorySection.Controls.Add(CreatePlainLabel("类型", new Point(18, 56), new Size(52, 20), FontBodyBold, ClrSubText));
+            _accessorySection.Controls.Add(CreatePlainLabel("伤害%", new Point(86, 56), new Size(58, 20), FontBodyBold, ClrSubText));
+            _accessorySection.Controls.Add(CreatePlainLabel("攻速%", new Point(190, 56), new Size(58, 20), FontBodyBold, ClrSubText));
+            _accessorySection.Controls.Add(CreatePlainLabel("暴击%", new Point(294, 56), new Size(58, 20), FontBodyBold, ClrSubText));
+
+            AddAccessoryStatRow("近战", numAccessoryMeleeDamage, numAccessoryMeleeSpeed, numAccessoryMeleeCrit, 84);
+            AddAccessoryStatRow("魔法", numAccessoryMagicDamage, numAccessoryMagicSpeed, numAccessoryMagicCrit, 120);
+            AddAccessoryStatRow("远程", numAccessoryRangedDamage, numAccessoryRangedSpeed, numAccessoryRangedCrit, 156);
+            AddAccessoryStatRow("召唤", numAccessorySummonDamage, numAccessorySummonSpeed, numAccessorySummonCrit, 192);
+
+            AddNumericField(_accessorySection, "防御", numAccessoryDefense, 18, 238, 64);
+            AddNumericField(_accessorySection, "减伤%", numAccessoryDamageReduction, 196, 238, 64);
+
+            foreach (var number in GetAccessoryNumbers())
+            {
+                number.Minimum = -999;
+                number.Maximum = 999;
+            }
+            numAccessoryDamageReduction.Minimum = 0;
+            numAccessoryDamageReduction.Maximum = 100;
+
+            _formStack?.Controls.Add(_accessorySection);
+        }
+
+        private void AddAccessoryStatRow(string label, NumericUpDown damage, NumericUpDown speed, NumericUpDown crit, int y)
+        {
+            if (_accessorySection == null)
+                return;
+
+            _accessorySection.Controls.Add(CreatePlainLabel(label, new Point(18, y + 3), new Size(52, 20), FontBodyBold, ClrText));
+            AddNumericBox(_accessorySection, damage, 86, y, 58);
+            AddNumericBox(_accessorySection, speed, 190, y, 58);
+            AddNumericBox(_accessorySection, crit, 294, y, 58);
+        }
+
+        private IEnumerable<NumericUpDown> GetAccessoryNumbers()
+        {
+            yield return numAccessoryMeleeDamage;
+            yield return numAccessoryMagicDamage;
+            yield return numAccessoryRangedDamage;
+            yield return numAccessorySummonDamage;
+            yield return numAccessoryMeleeSpeed;
+            yield return numAccessoryMagicSpeed;
+            yield return numAccessoryRangedSpeed;
+            yield return numAccessorySummonSpeed;
+            yield return numAccessoryMeleeCrit;
+            yield return numAccessoryMagicCrit;
+            yield return numAccessoryRangedCrit;
+            yield return numAccessorySummonCrit;
+            yield return numAccessoryDefense;
+            yield return numAccessoryDamageReduction;
         }
 
         private void BuildBlockSection()
@@ -528,7 +654,7 @@ namespace tmcreator
             lblPreviewTitle.BackColor = Color.Transparent;
             pnlRight.Controls.Add(lblPreviewTitle);
 
-            _rightSubtitleLabel = CreatePlainLabel("创建后的物品会以卡片形式显示，方便继续编辑流程或删除。", new Point(24, 47), new Size(520, 22), FontBody, ClrSubText);
+            _rightSubtitleLabel = CreatePlainLabel("创建后的内容会以卡片形式显示，方便继续编辑属性、流程或删除。", new Point(24, 47), new Size(560, 22), FontBody, ClrSubText);
             pnlRight.Controls.Add(_rightSubtitleLabel);
 
             btnExport.Text = "导出 Mod";
@@ -612,20 +738,36 @@ namespace tmcreator
         private static void AddNumericField(Control parent, string label, NumericUpDown number, int x, int y, int inputWidth)
         {
             AddFieldLabel(parent, label, x, y + 3, 72);
-            number.Location = new Point(x + 78, y);
-            number.Size = new Size(inputWidth, 26);
+            AddNumericBox(parent, number, x + 78, y, inputWidth);
+        }
+
+        private static void AddNumericBox(Control parent, NumericUpDown number, int x, int y, int inputWidth)
+        {
+            var host = new Panel
+            {
+                Location = new Point(x, y),
+                Size = new Size(inputWidth, 26),
+                BackColor = ClrInputBg,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
+            };
+            host.Paint += NumericHost_Paint;
+
+            number.Location = new Point(0, 2);
+            number.Size = new Size(inputWidth + SystemInformation.VerticalScrollBarWidth, 22);
             number.Font = FontBody;
             number.BackColor = ClrInputBg;
             number.ForeColor = ClrText;
-            number.BorderStyle = BorderStyle.FixedSingle;
+            number.BorderStyle = BorderStyle.None;
             number.TextAlign = HorizontalAlignment.Center;
             StyleNumericUpDown(number);
-            parent.Controls.Add(number);
+            host.Controls.Add(number);
+            parent.Controls.Add(host);
         }
 
         private static void StyleNumericUpDown(NumericUpDown number)
         {
-            HideNativeSpinButtons(number);
+            StyleNativeNumericChildren(number);
             number.HandleCreated -= NumericUpDown_HandleCreated;
             number.HandleCreated += NumericUpDown_HandleCreated;
             number.Resize -= NumericUpDown_Resize;
@@ -635,34 +777,32 @@ namespace tmcreator
         private static void NumericUpDown_HandleCreated(object? sender, EventArgs e)
         {
             if (sender is NumericUpDown number)
-                HideNativeSpinButtons(number);
+                StyleNativeNumericChildren(number);
         }
 
         private static void NumericUpDown_Resize(object? sender, EventArgs e)
         {
             if (sender is NumericUpDown number)
-                HideNativeSpinButtons(number);
+                StyleNativeNumericChildren(number);
         }
 
-        private static void HideNativeSpinButtons(NumericUpDown number)
+        private static void StyleNativeNumericChildren(NumericUpDown number)
         {
             foreach (Control child in number.Controls)
             {
-                if (child.GetType().Name.Contains("UpDownButtons", StringComparison.OrdinalIgnoreCase))
-                {
-                    child.Visible = false;
-                    child.Enabled = false;
-                    child.SetBounds(number.Width, 0, 0, number.Height);
-                }
-                else
-                {
-                    child.BackColor = ClrInputBg;
-                    child.ForeColor = ClrText;
-                    child.SetBounds(0, 0, number.Width, number.Height);
-                }
+                child.BackColor = ClrInputBg;
+                child.ForeColor = ClrText;
             }
 
             number.Invalidate(true);
+        }
+
+        private static void NumericHost_Paint(object? sender, PaintEventArgs e)
+        {
+            if (sender is not Panel panel) return;
+
+            using var borderPen = new Pen(ClrBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, panel.Width - 1, panel.Height - 1);
         }
 
         private static void StyleTextBox(UITextBox textBox)
@@ -694,8 +834,8 @@ namespace tmcreator
         private static void ConfigureHeaderButton(UIButton button, string text, EventHandler clickHandler)
         {
             button.Text = text;
-            button.Size = new Size(82, 30);
-            button.Margin = new Padding(6, 0, 0, 0);
+            button.Size = new Size(86, 30);
+            button.Margin = new Padding(8, 0, 0, 0);
             button.Font = FontBodyBold;
             button.Style = UIStyle.Black;
             button.FillColor = Color.FromArgb(32, 45, 61);
@@ -718,7 +858,7 @@ namespace tmcreator
 
             int margin = 18;
             int headerTop = 38;
-            int headerHeight = 68;
+            int headerHeight = 76;
             int panelTop = headerTop + headerHeight + 12;
             int panelHeight = Math.Max(500, ClientSize.Height - panelTop - margin);
             int leftWidth = 430;
@@ -726,7 +866,7 @@ namespace tmcreator
 
             _headerPanel.SetBounds(margin, headerTop, ClientSize.Width - margin * 2, headerHeight);
             if (_projectToolbar != null)
-                _projectToolbar.SetBounds(Math.Max(380, _headerPanel.Width - 372), 20, 360, 32);
+                _projectToolbar.SetBounds(Math.Max(430, _headerPanel.Width - 390), 22, 382, 32);
 
             pnlLeft.SetBounds(margin, panelTop, leftWidth, panelHeight);
             pnlRight.SetBounds(margin + leftWidth + gap, panelTop, ClientSize.Width - (margin * 2 + leftWidth + gap), panelHeight);
@@ -748,6 +888,8 @@ namespace tmcreator
             _formScrollBar.BringToFront();
 
             btnExport.Location = new Point(Math.Max(24, pnlRight.Width - btnExport.Width - 24), 24);
+            if (_rightSubtitleLabel != null)
+                _rightSubtitleLabel.Width = Math.Max(260, btnExport.Left - _rightSubtitleLabel.Left - 24);
             flowItems.SetBounds(24, 84, pnlRight.Width - 48, pnlRight.Height - 108);
             _emptyStateLabel.Bounds = flowItems.Bounds;
             _emptyStateLabel.BringToFront();
@@ -865,20 +1007,16 @@ namespace tmcreator
             }
         }
 
-        private void CreateItemModern_Click(object? sender, EventArgs e)
+        private ModItemData CaptureItemFromForm(FlowScript? flow = null)
         {
-            if (string.IsNullOrWhiteSpace(txtName.Text))
-            {
-                UIMessageBox.Show("请输入内部名称。");
-                return;
-            }
+            var type = cmbItemType.SelectedIndex >= 0 ? (ItemType)cmbItemType.SelectedIndex : ItemType.Item;
 
-            var item = new ModItemData
+            return new ModItemData
             {
                 Name = txtName.Text.Trim(),
                 DisplayName = string.IsNullOrWhiteSpace(txtDisplayName.Text) ? txtName.Text.Trim() : txtDisplayName.Text.Trim(),
                 Description = txtDescription.Text.Trim(),
-                Type = (ItemType)cmbItemType.SelectedIndex,
+                Type = type,
                 Width = (int)numWidth.Value,
                 Height = (int)numHeight.Value,
                 Value = (int)numValue.Value,
@@ -887,6 +1025,7 @@ namespace tmcreator
                 DamageKind = GetSelectedDamageKind(),
                 UseTime = (int)numUseTime.Value,
                 UseAnimation = (int)numUseTime.Value,
+                UseStyleId = (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = (int)numCriticalChance.Value,
                 UsesProjectile = chkUsesProjectile.Checked,
@@ -897,13 +1036,56 @@ namespace tmcreator
                 AxePower = (int)numAxePower.Value,
                 HammerPower = (int)numHammerPower.Value,
                 MinPick = (int)numMinPick.Value,
+                AccessoryMeleeDamage = (int)numAccessoryMeleeDamage.Value,
+                AccessoryMagicDamage = (int)numAccessoryMagicDamage.Value,
+                AccessoryRangedDamage = (int)numAccessoryRangedDamage.Value,
+                AccessorySummonDamage = (int)numAccessorySummonDamage.Value,
+                AccessoryMeleeSpeed = (int)numAccessoryMeleeSpeed.Value,
+                AccessoryMagicSpeed = (int)numAccessoryMagicSpeed.Value,
+                AccessoryRangedSpeed = (int)numAccessoryRangedSpeed.Value,
+                AccessorySummonSpeed = (int)numAccessorySummonSpeed.Value,
+                AccessoryMeleeCrit = (int)numAccessoryMeleeCrit.Value,
+                AccessoryMagicCrit = (int)numAccessoryMagicCrit.Value,
+                AccessoryRangedCrit = (int)numAccessoryRangedCrit.Value,
+                AccessorySummonCrit = (int)numAccessorySummonCrit.Value,
+                AccessoryDefense = (int)numAccessoryDefense.Value,
+                AccessoryDamageReduction = (int)numAccessoryDamageReduction.Value,
                 AutoReuse = chkAutoReuse.Checked,
                 UseTurn = chkUseTurn.Checked,
-                TexturePath = (ItemType)cmbItemType.SelectedIndex == ItemType.Buff && GetSelectedBuffIconSource() == BuffIconSource.Vanilla ? string.Empty : _selectedTexturePath,
+                TexturePath = type == ItemType.Buff && GetSelectedBuffIconSource() == BuffIconSource.Vanilla ? string.Empty : _selectedTexturePath,
+                IsMultiFrameTexture = chkMultiFrameTexture.Checked,
+                TextureFrameCount = (int)numTextureFrameCount.Value,
                 BuffIconSource = GetSelectedBuffIconSource(),
                 VanillaBuffIconId = (int)numVanillaBuffIconId.Value,
+                Flow = flow,
                 Recipe = CloneRecipe(_currentRecipe)
             };
+        }
+
+        private void CreateItemModern_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(txtName.Text))
+            {
+                UIMessageBox.Show("请输入内部名称。");
+                return;
+            }
+
+            var editingItem = _editingItem;
+            var item = CaptureItemFromForm(editingItem?.Flow);
+
+            if (editingItem != null)
+            {
+                int index = _items.IndexOf(editingItem);
+                if (index >= 0)
+                {
+                    _items[index] = item;
+                    ClearInputs();
+                    RefreshItemCards();
+                    return;
+                }
+
+                _editingItem = null;
+            }
 
             _items.Add(item);
             AddItemCardModern(item);
@@ -986,7 +1168,7 @@ namespace tmcreator
             {
                 Text = item.DisplayName,
                 Location = new Point(112, 44),
-                Size = new Size(Math.Max(120, card.Width - 340), 24),
+                Size = new Size(Math.Max(120, card.Width - 260), 24),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold, GraphicsUnit.Point),
                 ForeColor = ClrText,
@@ -998,7 +1180,7 @@ namespace tmcreator
             {
                 Text = item.Name,
                 Location = new Point(112, 68),
-                Size = new Size(Math.Max(120, card.Width - 340), 18),
+                Size = new Size(Math.Max(120, card.Width - 260), 18),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = FontSmall,
                 ForeColor = ClrMuted,
@@ -1010,7 +1192,7 @@ namespace tmcreator
             {
                 Text = BuildStatsTextModern(item),
                 Location = new Point(112, 91),
-                Size = new Size(Math.Max(220, card.Width - 340), 22),
+                Size = new Size(Math.Max(220, card.Width - 260), 22),
                 Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontSmall,
                 ForeColor = ClrSubText,
@@ -1018,11 +1200,24 @@ namespace tmcreator
             };
             card.Controls.Add(statsLabel);
 
+            var editBtn = new UIButton
+            {
+                Text = "编辑",
+                Size = new Size(88, 28),
+                Location = new Point(card.Width - 112, 18),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Font = FontBodyBold,
+                Tag = item
+            };
+            StyleButton(editBtn, Color.FromArgb(62, 142, 241), Color.FromArgb(43, 102, 178));
+            editBtn.Click += (s, e) => LoadItemForEditing(item);
+            card.Controls.Add(editBtn);
+
             var flowBtn = new UIButton
             {
-                Text = "编辑流程",
-                Size = new Size(92, 32),
-                Location = new Point(card.Width - 204, 46),
+                Text = "流程",
+                Size = new Size(88, 28),
+                Location = new Point(card.Width - 112, 50),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontBodyBold,
                 Tag = item
@@ -1038,8 +1233,8 @@ namespace tmcreator
             var deleteBtn = new UIButton
             {
                 Text = "删除",
-                Size = new Size(82, 32),
-                Location = new Point(card.Width - 102, 46),
+                Size = new Size(88, 28),
+                Location = new Point(card.Width - 112, 82),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontBodyBold,
                 Tag = item
@@ -1048,6 +1243,9 @@ namespace tmcreator
             deleteBtn.Click += (s, e) =>
             {
                 _items.Remove(item);
+                if (ReferenceEquals(_editingItem, item))
+                    ClearInputs();
+
                 DisposeCardImages(card);
                 flowItems.Controls.Remove(card);
                 card.Dispose();
@@ -1058,6 +1256,77 @@ namespace tmcreator
             flowItems.Controls.Add(card);
             flowItems.Controls.SetChildIndex(card, 0);
             ResizeItemCards();
+        }
+
+        private void LoadItemForEditing(ModItemData item)
+        {
+            _editingItem = item;
+
+            cmbItemType.SelectedIndex = ClampComboIndex((int)item.Type, cmbItemType.Items.Count, 3);
+            txtName.Text = item.Name;
+            txtDisplayName.Text = item.DisplayName;
+            txtDescription.Text = item.Description;
+
+            SetNumericValue(numWidth, item.Width);
+            SetNumericValue(numHeight, item.Height);
+            SetNumericValue(numValue, item.Value);
+            SetNumericValue(numRarity, item.Rarity);
+            SetNumericValue(numDamage, item.Damage);
+            SetDamageKind(item.DamageKind);
+            SetNumericValue(numUseTime, item.UseTime);
+            chkUsesProjectile.Checked = item.UsesProjectile;
+            SetNumericValue(numUseStyleId, item.UseStyleId <= 0 ? (item.UsesProjectile ? 5 : 1) : item.UseStyleId);
+            SetNumericValue(numKnockback, item.Knockback);
+            SetNumericValue(numCriticalChance, item.CriticalChance);
+            chkConsumeOnUse.Checked = item.ConsumeOnUse;
+            SetNumericValue(numProjectileId, item.ProjectileId);
+            SetNumericValue(numProjectileSpeed, item.ProjectileSpeed);
+            SetNumericValue(numPickaxePower, item.PickaxePower);
+            SetNumericValue(numAxePower, item.AxePower);
+            SetNumericValue(numHammerPower, item.HammerPower);
+            SetNumericValue(numMinPick, item.MinPick);
+            SetNumericValue(numAccessoryMeleeDamage, item.AccessoryMeleeDamage);
+            SetNumericValue(numAccessoryMagicDamage, item.AccessoryMagicDamage);
+            SetNumericValue(numAccessoryRangedDamage, item.AccessoryRangedDamage);
+            SetNumericValue(numAccessorySummonDamage, item.AccessorySummonDamage);
+            SetNumericValue(numAccessoryMeleeSpeed, item.AccessoryMeleeSpeed);
+            SetNumericValue(numAccessoryMagicSpeed, item.AccessoryMagicSpeed);
+            SetNumericValue(numAccessoryRangedSpeed, item.AccessoryRangedSpeed);
+            SetNumericValue(numAccessorySummonSpeed, item.AccessorySummonSpeed);
+            SetNumericValue(numAccessoryMeleeCrit, item.AccessoryMeleeCrit);
+            SetNumericValue(numAccessoryMagicCrit, item.AccessoryMagicCrit);
+            SetNumericValue(numAccessoryRangedCrit, item.AccessoryRangedCrit);
+            SetNumericValue(numAccessorySummonCrit, item.AccessorySummonCrit);
+            SetNumericValue(numAccessoryDefense, item.AccessoryDefense);
+            SetNumericValue(numAccessoryDamageReduction, item.AccessoryDamageReduction);
+            chkAutoReuse.Checked = item.AutoReuse;
+            chkUseTurn.Checked = item.UseTurn;
+            chkMultiFrameTexture.Checked = item.IsMultiFrameTexture;
+            SetNumericValue(numTextureFrameCount, item.TextureFrameCount <= 0 ? 1 : item.TextureFrameCount);
+            SetBuffIconSource(item.BuffIconSource);
+            SetNumericValue(numVanillaBuffIconId, item.VanillaBuffIconId <= 0 ? 1 : item.VanillaBuffIconId);
+
+            _currentRecipe = CloneRecipe(item.Recipe ?? new RecipeData());
+            UpdateRecipeSummary();
+
+            _selectedTexturePath = item.TexturePath ?? string.Empty;
+            picTexture.Image?.Dispose();
+            picTexture.Image = null;
+            if (!string.IsNullOrWhiteSpace(_selectedTexturePath) && File.Exists(_selectedTexturePath))
+            {
+                try
+                {
+                    picTexture.Image = LoadImageCopy(_selectedTexturePath);
+                }
+                catch
+                {
+                    _selectedTexturePath = string.Empty;
+                }
+            }
+
+            UpdateFieldVisibility();
+            if (_formScrollBar != null)
+                _formScrollBar.Value = 0;
         }
 
         private void ExportModern_Click(object? sender, EventArgs e)
@@ -1079,6 +1348,7 @@ namespace tmcreator
             string baseDir = dialog.SelectedPath;
             string itemsDir = Path.Combine(baseDir, "Items");
             string buffsDir = Path.Combine(baseDir, "Buffs");
+            string projectilesDir = Path.Combine(baseDir, "Projectiles");
             string locDir = Path.Combine(baseDir, "Localization");
             string locFile = Path.Combine(locDir, "en-US.hjson");
 
@@ -1086,14 +1356,17 @@ namespace tmcreator
             {
                 Directory.CreateDirectory(itemsDir);
                 Directory.CreateDirectory(buffsDir);
+                Directory.CreateDirectory(projectilesDir);
                 Directory.CreateDirectory(locDir);
 
                 var sbItems = new System.Text.StringBuilder();
                 var sbBuffs = new System.Text.StringBuilder();
+                var sbProjectiles = new System.Text.StringBuilder();
                 var sbLoc = new System.Text.StringBuilder();
                 string projectCodeName = GetProjectCodeName();
-                var itemEntries = _items.Where(item => item.Type != ItemType.Buff).ToList();
+                var itemEntries = _items.Where(item => item.Type != ItemType.Buff && item.Type != ItemType.Projectile).ToList();
                 var buffEntries = _items.Where(item => item.Type == ItemType.Buff).ToList();
+                var projectileEntries = _items.Where(item => item.Type == ItemType.Projectile).ToList();
 
                 sbLoc.AppendLine("Mods: {");
                 sbLoc.AppendLine($"  {projectCodeName}: {{");
@@ -1158,12 +1431,41 @@ namespace tmcreator
                     sbLoc.AppendLine("    }");
                 }
 
+                if (projectileEntries.Count > 0)
+                {
+                    sbLoc.AppendLine("    Projectiles: {");
+                    foreach (var projectile in projectileEntries)
+                    {
+                        string className = SanitizeClassName(projectile.Name);
+                        string csFile = Path.Combine(projectilesDir, $"{className}.cs");
+                        string code = GenerateProjectileCode(projectile, className);
+
+                        File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
+
+                        if (!string.IsNullOrEmpty(projectile.TexturePath) && File.Exists(projectile.TexturePath))
+                        {
+                            string texFile = Path.Combine(projectilesDir, $"{className}.png");
+                            File.Copy(projectile.TexturePath, texFile, true);
+                            sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs + {className}.png");
+                        }
+                        else
+                        {
+                            sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs");
+                        }
+
+                        sbLoc.AppendLine($"      {className}.DisplayName: {projectile.DisplayName}");
+                        if (!string.IsNullOrEmpty(projectile.Description))
+                            sbLoc.AppendLine($"      {className}.Description: {projectile.Description}");
+                    }
+                    sbLoc.AppendLine("    }");
+                }
+
                 sbLoc.AppendLine("  }");
                 sbLoc.AppendLine("}");
 
                 File.WriteAllText(locFile, sbLoc.ToString(), System.Text.Encoding.UTF8);
 
-                string msg = $"成功导出 {_items.Count} 个内容到:\n{baseDir}\n\n生成内容:\n{sbItems}{sbBuffs}";
+                string msg = $"成功导出 {_items.Count} 个内容到:\n{baseDir}\n\n生成内容:\n{sbItems}{sbBuffs}{sbProjectiles}";
                 UIMessageBox.Show(msg);
             }
             catch (Exception ex)
@@ -1180,10 +1482,19 @@ namespace tmcreator
             {
                 if (item.Damage > 0) parts.Add($"{item.DamageKindDisplay}伤害 {item.Damage}");
                 parts.Add($"使用时间 {item.UseTime}");
+                parts.Add($"动作 {item.UseStyleId}");
                 if (item.Knockback > 0) parts.Add($"击退 {item.Knockback}");
                 if (item.CriticalChance > 0) parts.Add($"暴击 {item.CriticalChance}%");
                 if (item.UsesProjectile) parts.Add($"弹幕 {item.ProjectileId} / 速度 {item.ProjectileSpeed:0.#}");
                 if (item.ConsumeOnUse) parts.Add("使用消耗");
+            }
+
+            if (item.Type == ItemType.Projectile)
+            {
+                if (item.Damage > 0) parts.Add($"{item.DamageKindDisplay}伤害 {item.Damage}");
+                if (item.Knockback > 0) parts.Add($"击退 {item.Knockback}");
+                if (item.Flow?.Blocks.Count > 0)
+                    parts.Add($"流程 {item.Flow.Blocks.Count} 节点");
             }
 
             if (item.Type == ItemType.Tool)
@@ -1205,15 +1516,37 @@ namespace tmcreator
                     parts.Add($"流程 {item.Flow.Blocks.Count} 节点");
             }
 
+            if (item.Type == ItemType.Accessory)
+            {
+                AppendAccessoryStatSummary(parts, "近战", item.AccessoryMeleeDamage, item.AccessoryMeleeSpeed, item.AccessoryMeleeCrit);
+                AppendAccessoryStatSummary(parts, "魔法", item.AccessoryMagicDamage, item.AccessoryMagicSpeed, item.AccessoryMagicCrit);
+                AppendAccessoryStatSummary(parts, "远程", item.AccessoryRangedDamage, item.AccessoryRangedSpeed, item.AccessoryRangedCrit);
+                AppendAccessoryStatSummary(parts, "召唤", item.AccessorySummonDamage, item.AccessorySummonSpeed, item.AccessorySummonCrit);
+                if (item.AccessoryDefense != 0) parts.Add($"防御 {item.AccessoryDefense:+#;-#;0}");
+                if (item.AccessoryDamageReduction > 0) parts.Add($"减伤 {item.AccessoryDamageReduction}%");
+            }
+
             if (item.Type != ItemType.Buff)
             {
                 if (item.Value > 0) parts.Add($"价值 {item.Value}");
-                if (item.Recipe.Enabled && item.Recipe.Ingredients.Count > 0)
+                if (item.Type != ItemType.Projectile && item.Recipe.Enabled && item.Recipe.Ingredients.Count > 0)
                     parts.Add($"配方 {item.Recipe.Ingredients.Count} 材料 / {item.Recipe.CraftingStationDisplay}");
+                if (item.IsMultiFrameTexture && item.TextureFrameCount > 1)
+                    parts.Add($"多帧 {item.TextureFrameCount}");
                 parts.Add($"尺寸 {item.Width}x{item.Height}");
             }
 
             return string.Join("   /   ", parts);
+        }
+
+        private static void AppendAccessoryStatSummary(List<string> parts, string label, int damage, int speed, int crit)
+        {
+            var stats = new List<string>();
+            if (damage != 0) stats.Add($"伤害 {damage:+#;-#;0}%");
+            if (speed != 0) stats.Add($"攻速 {speed:+#;-#;0}%");
+            if (crit != 0) stats.Add($"暴击 {crit:+#;-#;0}%");
+            if (stats.Count > 0)
+                parts.Add($"{label} {string.Join(" ", stats)}");
         }
 
         private static Color GetItemAccent(ItemType type) => type switch
@@ -1223,6 +1556,8 @@ namespace tmcreator
             ItemType.Block => Color.FromArgb(88, 204, 132),
             ItemType.Item => Color.FromArgb(85, 160, 255),
             ItemType.Buff => Color.FromArgb(164, 122, 235),
+            ItemType.Projectile => Color.FromArgb(80, 210, 220),
+            ItemType.Accessory => Color.FromArgb(255, 204, 92),
             _ => ClrMuted
         };
 
@@ -1403,6 +1738,7 @@ namespace tmcreator
             _projectName = string.IsNullOrWhiteSpace(project.ProjectName) ? "未命名工程" : project.ProjectName.Trim();
             _projectFilePath = filePath;
 
+            _editingItem = null;
             _items.Clear();
             ClearItemCards();
 
@@ -1457,6 +1793,7 @@ namespace tmcreator
                 Damage = (int)numDamage.Value,
                 DamageKind = GetSelectedDamageKind(),
                 UseTime = (int)numUseTime.Value,
+                UseStyleId = (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = (int)numCriticalChance.Value,
                 UsesProjectile = chkUsesProjectile.Checked,
@@ -1467,9 +1804,25 @@ namespace tmcreator
                 AxePower = (int)numAxePower.Value,
                 HammerPower = (int)numHammerPower.Value,
                 MinPick = (int)numMinPick.Value,
+                AccessoryMeleeDamage = (int)numAccessoryMeleeDamage.Value,
+                AccessoryMagicDamage = (int)numAccessoryMagicDamage.Value,
+                AccessoryRangedDamage = (int)numAccessoryRangedDamage.Value,
+                AccessorySummonDamage = (int)numAccessorySummonDamage.Value,
+                AccessoryMeleeSpeed = (int)numAccessoryMeleeSpeed.Value,
+                AccessoryMagicSpeed = (int)numAccessoryMagicSpeed.Value,
+                AccessoryRangedSpeed = (int)numAccessoryRangedSpeed.Value,
+                AccessorySummonSpeed = (int)numAccessorySummonSpeed.Value,
+                AccessoryMeleeCrit = (int)numAccessoryMeleeCrit.Value,
+                AccessoryMagicCrit = (int)numAccessoryMagicCrit.Value,
+                AccessoryRangedCrit = (int)numAccessoryRangedCrit.Value,
+                AccessorySummonCrit = (int)numAccessorySummonCrit.Value,
+                AccessoryDefense = (int)numAccessoryDefense.Value,
+                AccessoryDamageReduction = (int)numAccessoryDamageReduction.Value,
                 AutoReuse = chkAutoReuse.Checked,
                 UseTurn = chkUseTurn.Checked,
                 TexturePath = (ItemType)cmbItemType.SelectedIndex == ItemType.Buff && GetSelectedBuffIconSource() == BuffIconSource.Vanilla ? string.Empty : _selectedTexturePath,
+                IsMultiFrameTexture = chkMultiFrameTexture.Checked,
+                TextureFrameCount = (int)numTextureFrameCount.Value,
                 BuffIconSource = GetSelectedBuffIconSource(),
                 VanillaBuffIconId = (int)numVanillaBuffIconId.Value,
                 Recipe = CloneRecipe(_currentRecipe)
@@ -1490,6 +1843,7 @@ namespace tmcreator
             SetNumericValue(numDamage, draft.Damage);
             SetDamageKind(draft.DamageKind);
             SetNumericValue(numUseTime, draft.UseTime);
+            SetNumericValue(numUseStyleId, draft.UseStyleId <= 0 ? 1 : draft.UseStyleId);
             SetNumericValue(numKnockback, draft.Knockback);
             SetNumericValue(numCriticalChance, draft.CriticalChance);
             chkUsesProjectile.Checked = draft.UsesProjectile;
@@ -1500,8 +1854,24 @@ namespace tmcreator
             SetNumericValue(numAxePower, draft.AxePower);
             SetNumericValue(numHammerPower, draft.HammerPower);
             SetNumericValue(numMinPick, draft.MinPick);
+            SetNumericValue(numAccessoryMeleeDamage, draft.AccessoryMeleeDamage);
+            SetNumericValue(numAccessoryMagicDamage, draft.AccessoryMagicDamage);
+            SetNumericValue(numAccessoryRangedDamage, draft.AccessoryRangedDamage);
+            SetNumericValue(numAccessorySummonDamage, draft.AccessorySummonDamage);
+            SetNumericValue(numAccessoryMeleeSpeed, draft.AccessoryMeleeSpeed);
+            SetNumericValue(numAccessoryMagicSpeed, draft.AccessoryMagicSpeed);
+            SetNumericValue(numAccessoryRangedSpeed, draft.AccessoryRangedSpeed);
+            SetNumericValue(numAccessorySummonSpeed, draft.AccessorySummonSpeed);
+            SetNumericValue(numAccessoryMeleeCrit, draft.AccessoryMeleeCrit);
+            SetNumericValue(numAccessoryMagicCrit, draft.AccessoryMagicCrit);
+            SetNumericValue(numAccessoryRangedCrit, draft.AccessoryRangedCrit);
+            SetNumericValue(numAccessorySummonCrit, draft.AccessorySummonCrit);
+            SetNumericValue(numAccessoryDefense, draft.AccessoryDefense);
+            SetNumericValue(numAccessoryDamageReduction, draft.AccessoryDamageReduction);
             chkAutoReuse.Checked = draft.AutoReuse;
             chkUseTurn.Checked = draft.UseTurn;
+            chkMultiFrameTexture.Checked = draft.IsMultiFrameTexture;
+            SetNumericValue(numTextureFrameCount, draft.TextureFrameCount <= 0 ? 1 : draft.TextureFrameCount);
             SetBuffIconSource(draft.BuffIconSource);
             SetNumericValue(numVanillaBuffIconId, draft.VanillaBuffIconId <= 0 ? 1 : draft.VanillaBuffIconId);
 
@@ -1534,6 +1904,7 @@ namespace tmcreator
                    string.IsNullOrWhiteSpace(_selectedTexturePath) &&
                    _currentRecipe.Ingredients.Count == 0 &&
                    numDamage.Value == 0 &&
+                   GetAccessoryNumbers().All(number => number.Value == 0) &&
                    numWidth.Value == 20 &&
                    numHeight.Value == 20 &&
                    numValue.Value == 0 &&
@@ -1545,6 +1916,14 @@ namespace tmcreator
             foreach (Control control in flowItems.Controls)
                 DisposeCardImages(control);
             flowItems.Controls.Clear();
+        }
+
+        private void RefreshItemCards()
+        {
+            ClearItemCards();
+            foreach (var item in _items)
+                AddItemCardModern(item);
+            UpdateEmptyState();
         }
 
         private void UpdateProjectStatus()
@@ -1610,6 +1989,10 @@ namespace tmcreator
             item.Recipe ??= new RecipeData();
             if (item.VanillaBuffIconId <= 0)
                 item.VanillaBuffIconId = 1;
+            if (item.UseStyleId <= 0)
+                item.UseStyleId = item.UsesProjectile ? 5 : 1;
+            if (item.TextureFrameCount <= 0)
+                item.TextureFrameCount = 1;
         }
 
         private static ModItemData CloneItem(ModItemData item)
@@ -1623,6 +2006,7 @@ namespace tmcreator
                 Damage = item.Damage,
                 DamageKind = item.DamageKind,
                 UseTime = item.UseTime,
+                UseStyleId = item.UseStyleId,
                 Knockback = item.Knockback,
                 CriticalChance = item.CriticalChance,
                 UsesProjectile = item.UsesProjectile,
@@ -1637,7 +2021,23 @@ namespace tmcreator
                 Value = item.Value,
                 Rarity = item.Rarity,
                 MinPick = item.MinPick,
+                AccessoryMeleeDamage = item.AccessoryMeleeDamage,
+                AccessoryMagicDamage = item.AccessoryMagicDamage,
+                AccessoryRangedDamage = item.AccessoryRangedDamage,
+                AccessorySummonDamage = item.AccessorySummonDamage,
+                AccessoryMeleeSpeed = item.AccessoryMeleeSpeed,
+                AccessoryMagicSpeed = item.AccessoryMagicSpeed,
+                AccessoryRangedSpeed = item.AccessoryRangedSpeed,
+                AccessorySummonSpeed = item.AccessorySummonSpeed,
+                AccessoryMeleeCrit = item.AccessoryMeleeCrit,
+                AccessoryMagicCrit = item.AccessoryMagicCrit,
+                AccessoryRangedCrit = item.AccessoryRangedCrit,
+                AccessorySummonCrit = item.AccessorySummonCrit,
+                AccessoryDefense = item.AccessoryDefense,
+                AccessoryDamageReduction = item.AccessoryDamageReduction,
                 TexturePath = item.TexturePath,
+                IsMultiFrameTexture = item.IsMultiFrameTexture,
+                TextureFrameCount = item.TextureFrameCount,
                 BuffIconSource = item.BuffIconSource,
                 VanillaBuffIconId = item.VanillaBuffIconId,
                 Flow = CloneFlow(item.Flow),
@@ -1784,18 +2184,21 @@ namespace tmcreator
             bool isWeapon = type == ItemType.Weapon;
             bool isBlock = type == ItemType.Block;
             bool isBuff = type == ItemType.Buff;
+            bool isProjectile = type == ItemType.Projectile;
+            bool isAccessory = type == ItemType.Accessory;
 
-            if (_toolSection == null || _combatSection == null || _blockSection == null || _buffSection == null || _basicSection == null || _textureSection == null || _recipeSection == null)
+            if (_toolSection == null || _combatSection == null || _blockSection == null || _accessorySection == null || _buffSection == null || _basicSection == null || _textureSection == null || _recipeSection == null)
                 return;
 
             _basicSection.Visible = !isBuff;
             _textureSection.Visible = !isBuff || GetSelectedBuffIconSource() == BuffIconSource.Custom;
             _toolSection.Visible = isTool;
-            _combatSection.Visible = isTool || isWeapon;
+            _combatSection.Visible = isTool || isWeapon || isProjectile;
+            _accessorySection.Visible = isAccessory;
             _blockSection.Visible = isBlock;
             _buffSection.Visible = isBuff;
-            _recipeSection.Visible = !isBuff;
-            btnCreate.Text = isBuff ? "创建 Buff" : "创建物品";
+            _recipeSection.Visible = !isBuff && !isProjectile;
+            btnCreate.Text = _editingItem != null ? "保存修改" : isBuff ? "创建 Buff" : isProjectile ? "创建弹幕" : isAccessory ? "创建饰品" : "创建物品";
 
             LayoutShell();
         }
@@ -1845,12 +2248,14 @@ namespace tmcreator
 
         private void ClearInputs()
         {
+            _editingItem = null;
             txtName.Text = "";
             txtDisplayName.Text = "";
             txtDescription.Text = "";
             numDamage.Value = 0;
             cmbDamageKind.SelectedIndex = 0;
             numUseTime.Value = 30;
+            numUseStyleId.Value = 1;
             numKnockback.Value = 0;
             numCriticalChance.Value = 4;
             chkUsesProjectile.Checked = false;
@@ -1865,8 +2270,12 @@ namespace tmcreator
             numValue.Value = 0;
             numRarity.Value = 0;
             numMinPick.Value = 0;
+            foreach (var number in GetAccessoryNumbers())
+                number.Value = 0;
             chkAutoReuse.Checked = false;
             chkUseTurn.Checked = false;
+            chkMultiFrameTexture.Checked = false;
+            numTextureFrameCount.Value = 1;
             cmbBuffIconSource.SelectedIndex = 0;
             numVanillaBuffIconId.Value = 1;
             _currentRecipe = new RecipeData();
@@ -2145,16 +2554,21 @@ namespace tmcreator
         {
             var sb = new System.Text.StringBuilder();
             bool hasFlow = item.Flow?.Blocks.Count > 0;
+            bool hasAccessoryFlow = item.Type == ItemType.Accessory && HasFlowEvents(item.Flow, AccessoryFlowEventIds, "accessory_wearing");
+            bool hasAnimation = item.IsMultiFrameTexture && item.TextureFrameCount > 1;
             if (hasFlow)
             {
                 sb.AppendLine("using System;");
                 sb.AppendLine("using Microsoft.Xna.Framework;");
             }
             sb.AppendLine("using Terraria;");
+            if (hasFlow || hasAnimation)
+            {
+                sb.AppendLine("using Terraria.DataStructures;");
+            }
             if (hasFlow)
             {
                 sb.AppendLine("using Terraria.Audio;");
-                sb.AppendLine("using Terraria.DataStructures;");
                 sb.AppendLine("using Terraria.Localization;");
             }
             sb.AppendLine("using Terraria.ID;");
@@ -2167,6 +2581,16 @@ namespace tmcreator
             if (hasFlow)
             {
                 sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
+                sb.AppendLine();
+            }
+
+            if (hasAnimation)
+            {
+                sb.AppendLine("        public override void SetStaticDefaults()");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            Main.RegisterItemAnimation(Type, new DrawAnimationVertical(5, {Math.Max(2, item.TextureFrameCount)}));");
+                sb.AppendLine("            ItemID.Sets.AnimatesAsSoul[Type] = true;");
+                sb.AppendLine("        }");
                 sb.AppendLine();
             }
 
@@ -2188,9 +2612,7 @@ namespace tmcreator
                 }
                 sb.AppendLine($"            Item.useTime = {item.UseTime};");
                 sb.AppendLine($"            Item.useAnimation = {item.UseAnimation};");
-                sb.AppendLine(item.UsesProjectile
-                    ? "            Item.useStyle = ItemUseStyleID.Shoot;"
-                    : "            Item.useStyle = ItemUseStyleID.Swing;");
+                sb.AppendLine($"            Item.useStyle = {GetUseStyleId(item)};");
                 sb.AppendLine(item.UsesProjectile
                     ? "            Item.UseSound = SoundID.Item5;"
                     : "            Item.UseSound = SoundID.Item1;");
@@ -2246,19 +2668,42 @@ namespace tmcreator
                 sb.AppendLine("            Item.maxStack = 999;");
             }
 
+            if (item.Type == ItemType.Accessory)
+            {
+                sb.AppendLine("            Item.accessory = true;");
+            }
+
             sb.AppendLine("        }");
+
+            if (item.Type == ItemType.Accessory && (HasAccessoryStats(item) || hasAccessoryFlow))
+            {
+                AppendAccessoryUpdateCode(sb, item, hasAccessoryFlow ? $"{className}AccessoryPlayer" : null);
+            }
 
             if (HasRecipe(item))
             {
                 AppendRecipeCode(sb, item);
             }
 
-            if (hasFlow)
+            if (hasFlow && item.Type != ItemType.Accessory)
             {
-                AppendFlowCode(sb, item.Flow!);
+                AppendFlowCode(sb, item.Flow!, $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
             }
 
             sb.AppendLine("    }");
+
+            if (hasAccessoryFlow)
+            {
+                AppendAccessoryFlowCode(sb, item.Flow!, $"{className}AccessoryPlayer", $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
+                AppendFlowTempStatsPlayerClass(sb, $"{className}FlowStatsPlayer");
+                AppendFlowTempStatsNpcClass(sb, $"{className}FlowStatsNpc");
+            }
+            else if (hasFlow && item.Type != ItemType.Accessory)
+            {
+                AppendFlowTempStatsPlayerClass(sb, $"{className}FlowStatsPlayer");
+                AppendFlowTempStatsNpcClass(sb, $"{className}FlowStatsNpc");
+            }
+
             sb.AppendLine("}");
 
             return sb.ToString();
@@ -2304,9 +2749,128 @@ namespace tmcreator
             return sb.ToString();
         }
 
+        private string GenerateProjectileCode(ModItemData item, string className)
+        {
+            var sb = new System.Text.StringBuilder();
+            bool hasFlow = HasFlowEvents(item.Flow, ProjectileFlowEventIds, "projectile_update");
+            bool hasAnimation = item.IsMultiFrameTexture && item.TextureFrameCount > 1;
+
+            if (hasFlow)
+            {
+                sb.AppendLine("using System;");
+                sb.AppendLine("using Microsoft.Xna.Framework;");
+            }
+            sb.AppendLine("using Terraria;");
+            if (hasFlow)
+            {
+                sb.AppendLine("using Terraria.Audio;");
+                sb.AppendLine("using Terraria.DataStructures;");
+                sb.AppendLine("using Terraria.Localization;");
+            }
+            sb.AppendLine("using Terraria.ID;");
+            sb.AppendLine("using Terraria.ModLoader;");
+            sb.AppendLine();
+            sb.AppendLine($"namespace {GetProjectCodeName()}.Projectiles");
+            sb.AppendLine("{");
+            sb.AppendLine($"    public class {className} : ModProjectile");
+            sb.AppendLine("    {");
+            if (hasFlow)
+            {
+                sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
+                sb.AppendLine();
+            }
+
+            if (hasAnimation)
+            {
+                sb.AppendLine("        public override void SetStaticDefaults()");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            Main.projFrames[Type] = {Math.Max(2, item.TextureFrameCount)};");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+            }
+
+            sb.AppendLine("        public override void SetDefaults()");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            Projectile.width = {item.Width};");
+            sb.AppendLine($"            Projectile.height = {item.Height};");
+            sb.AppendLine("            Projectile.friendly = true;");
+            sb.AppendLine("            Projectile.hostile = false;");
+            sb.AppendLine($"            Projectile.DamageType = {GetDamageClassExpression(item.DamageKind)};");
+            if (item.Damage > 0)
+                sb.AppendLine($"            Projectile.damage = {item.Damage};");
+            sb.AppendLine($"            Projectile.timeLeft = {Math.Max(1, item.UseTime <= 0 ? 600 : item.UseTime * 60)};");
+            sb.AppendLine("            Projectile.penetrate = 1;");
+            if (item.Knockback > 0)
+                sb.AppendLine($"            Projectile.knockBack = {item.Knockback};");
+            sb.AppendLine("        }");
+
+            if (hasFlow || hasAnimation)
+                AppendProjectileFlowCode(sb, item.Flow, hasAnimation, Math.Max(2, item.TextureFrameCount), $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
+
+            sb.AppendLine("    }");
+
+            if (hasFlow)
+            {
+                AppendFlowTempStatsPlayerClass(sb, $"{className}FlowStatsPlayer");
+                AppendFlowTempStatsNpcClass(sb, $"{className}FlowStatsNpc");
+            }
+
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
         private static bool HasRecipe(ModItemData item)
         {
             return item.Recipe.Enabled && item.Recipe.Ingredients.Count > 0;
+        }
+
+        private static bool HasAccessoryStats(ModItemData item)
+        {
+            return item.AccessoryMeleeDamage != 0 ||
+                   item.AccessoryMagicDamage != 0 ||
+                   item.AccessoryRangedDamage != 0 ||
+                   item.AccessorySummonDamage != 0 ||
+                   item.AccessoryMeleeSpeed != 0 ||
+                   item.AccessoryMagicSpeed != 0 ||
+                   item.AccessoryRangedSpeed != 0 ||
+                   item.AccessorySummonSpeed != 0 ||
+                   item.AccessoryMeleeCrit != 0 ||
+                   item.AccessoryMagicCrit != 0 ||
+                   item.AccessoryRangedCrit != 0 ||
+                   item.AccessorySummonCrit != 0 ||
+                   item.AccessoryDefense != 0 ||
+                   item.AccessoryDamageReduction > 0;
+        }
+
+        private static void AppendAccessoryUpdateCode(System.Text.StringBuilder sb, ModItemData item, string? accessoryFlowPlayerClassName)
+        {
+            sb.AppendLine();
+            sb.AppendLine("        public override void UpdateAccessory(Player player, bool hideVisual)");
+            sb.AppendLine("        {");
+            AppendAccessoryDamageClassCode(sb, "DamageClass.Melee", item.AccessoryMeleeDamage, item.AccessoryMeleeSpeed, item.AccessoryMeleeCrit);
+            AppendAccessoryDamageClassCode(sb, "DamageClass.Magic", item.AccessoryMagicDamage, item.AccessoryMagicSpeed, item.AccessoryMagicCrit);
+            AppendAccessoryDamageClassCode(sb, "DamageClass.Ranged", item.AccessoryRangedDamage, item.AccessoryRangedSpeed, item.AccessoryRangedCrit);
+            AppendAccessoryDamageClassCode(sb, "DamageClass.Summon", item.AccessorySummonDamage, item.AccessorySummonSpeed, item.AccessorySummonCrit);
+
+            if (item.AccessoryDefense != 0)
+                sb.AppendLine($"            player.statDefense += {item.AccessoryDefense};");
+            if (item.AccessoryDamageReduction > 0)
+                sb.AppendLine($"            player.endurance += {FormatPercentLiteral(item.AccessoryDamageReduction)};");
+
+            if (!string.IsNullOrWhiteSpace(accessoryFlowPlayerClassName))
+                sb.AppendLine($"            player.GetModPlayer<{accessoryFlowPlayerClassName}>().UpdateEquippedAccessory();");
+
+            sb.AppendLine("        }");
+        }
+
+        private static void AppendAccessoryDamageClassCode(System.Text.StringBuilder sb, string damageClass, int damage, int speed, int crit)
+        {
+            if (damage != 0)
+                sb.AppendLine($"            player.GetDamage({damageClass}) += {FormatPercentLiteral(damage)};");
+            if (speed != 0)
+                sb.AppendLine($"            player.GetAttackSpeed({damageClass}) += {FormatPercentLiteral(speed)};");
+            if (crit != 0)
+                sb.AppendLine($"            player.GetCritChance({damageClass}) += {crit};");
         }
 
         private static bool HasFlowEvents(FlowScript? flow, HashSet<string> eventIds, string defaultEventId)
@@ -2356,7 +2920,19 @@ namespace tmcreator
             return $"{value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}f";
         }
 
-        private static void AppendFlowCode(System.Text.StringBuilder sb, FlowScript flow)
+        private static string FormatPercentLiteral(int percent)
+        {
+            return (percent / 100f).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "f";
+        }
+
+        private static int GetUseStyleId(ModItemData item)
+        {
+            return item.UseStyleId > 0
+                ? item.UseStyleId
+                : item.UsesProjectile ? 5 : 1;
+        }
+
+        private static void AppendFlowCode(System.Text.StringBuilder sb, FlowScript flow, string tempStatPlayerClassName, string tempStatNpcClassName)
         {
             var eventGroups = BuildFlowEventGroups(flow.Blocks, "on_use");
             if (eventGroups.Count == 0)
@@ -2368,7 +2944,7 @@ namespace tmcreator
             AppendHoldItemFlow(sb, eventGroups.Where(group => group.EventId == "while_held").ToList());
             AppendOnHitNpcFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_npc").ToList());
             AppendOnHitPvpFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_pvp").ToList());
-            AppendFlowHelpers(sb);
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
         }
 
         private static List<FlowEventGroup> BuildFlowEventGroups(IEnumerable<BlockInstance> blocks, string defaultEventId)
@@ -2456,8 +3032,86 @@ namespace tmcreator
             sb.AppendLine("        }");
         }
 
+        private static void AppendAccessoryFlowCode(System.Text.StringBuilder sb, FlowScript flow, string accessoryPlayerClassName, string tempStatPlayerClassName, string tempStatNpcClassName)
+        {
+            var eventGroups = BuildFlowEventGroups(flow.Blocks, "accessory_wearing");
+            var wearingGroups = eventGroups.Where(group => group.EventId == "accessory_wearing").ToList();
+            var attackGroups = eventGroups.Where(group => group.EventId == "accessory_attack").ToList();
+            var unequipGroups = eventGroups.Where(group => group.EventId == "accessory_unequip").ToList();
+            var equipGroups = eventGroups.Where(group => group.EventId == "accessory_equip").ToList();
+            if (wearingGroups.Count == 0 && attackGroups.Count == 0 && unequipGroups.Count == 0 && equipGroups.Count == 0)
+                return;
+
+            sb.AppendLine();
+            sb.AppendLine($"    public class {accessoryPlayerClassName} : ModPlayer");
+            sb.AppendLine("    {");
+            sb.AppendLine("        private bool _equippedThisTick;");
+            sb.AppendLine("        private bool _wasEquipped;");
+            sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
+            sb.AppendLine();
+            sb.AppendLine("        public void UpdateEquippedAccessory()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            Player player = Player;");
+            sb.AppendLine("            NPC npc = null;");
+            sb.AppendLine("            Player targetPlayer = player;");
+            sb.AppendLine();
+            sb.AppendLine("            bool firstEquipTick = !_wasEquipped && !_equippedThisTick;");
+            sb.AppendLine("            _equippedThisTick = true;");
+            if (equipGroups.Count > 0)
+            {
+                sb.AppendLine("            if (firstEquipTick)");
+                sb.AppendLine("            {");
+                AppendFlowGroupBodies(sb, equipGroups, 16, "player.GetSource_FromThis()");
+                sb.AppendLine("            }");
+            }
+            if (wearingGroups.Count > 0)
+                AppendFlowGroupBodies(sb, wearingGroups, 12, "player.GetSource_FromThis()");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public override void ResetEffects()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            _equippedThisTick = false;");
+            sb.AppendLine("        }");
+
+            if (attackGroups.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            if (!_equippedThisTick && !_wasEquipped)");
+                sb.AppendLine("                return;");
+                sb.AppendLine();
+                sb.AppendLine("            Player player = Player;");
+                sb.AppendLine("            NPC npc = target;");
+                sb.AppendLine("            Player targetPlayer = null;");
+                AppendFlowGroupBodies(sb, attackGroups, 12, "player.GetSource_FromThis()");
+                sb.AppendLine("        }");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("        public override void PostUpdate()");
+            sb.AppendLine("        {");
+            if (unequipGroups.Count > 0)
+            {
+                sb.AppendLine("            if (!_equippedThisTick && _wasEquipped)");
+                sb.AppendLine("            {");
+                sb.AppendLine("                Player player = Player;");
+                sb.AppendLine("                NPC npc = null;");
+                sb.AppendLine("                Player targetPlayer = player;");
+                AppendFlowGroupBodies(sb, unequipGroups, 16, "player.GetSource_FromThis()");
+                sb.AppendLine("            }");
+                sb.AppendLine();
+            }
+            sb.AppendLine("            _wasEquipped = _equippedThisTick;");
+            sb.AppendLine("        }");
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+            sb.AppendLine("    }");
+        }
+
         private static void AppendBuffFlowCode(System.Text.StringBuilder sb, FlowScript flow, string buffClassName)
         {
+            string tempStatPlayerClassName = $"{buffClassName}FlowStatsPlayer";
+            string tempStatNpcClassName = $"{buffClassName}FlowStatsNpc";
             var eventGroups = BuildFlowEventGroups(flow.Blocks, "buff_update");
             var gainGroups = eventGroups.Where(group => group.EventId == "buff_on_gain").ToList();
             var updateGroups = eventGroups.Where(group => group.EventId == "buff_update").ToList();
@@ -2502,13 +3156,96 @@ namespace tmcreator
             sb.AppendLine();
             sb.AppendLine("            _hadBuff = hasBuff;");
             sb.AppendLine("        }");
-            AppendFlowHelpers(sb);
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
             sb.AppendLine("    }");
+
+            AppendFlowTempStatsPlayerClass(sb, tempStatPlayerClassName);
+            AppendFlowTempStatsNpcClass(sb, tempStatNpcClassName);
         }
 
-        private static void AppendFlowGroupBodies(System.Text.StringBuilder sb, IEnumerable<FlowEventGroup> groups, int indent, string sourceExpression = "player.GetSource_ItemUse(Item)")
+        private static void AppendProjectileFlowCode(System.Text.StringBuilder sb, FlowScript? flow, bool hasAnimation, int frameCount, string tempStatPlayerClassName, string tempStatNpcClassName)
         {
-            var context = new FlowGenerationContext(sourceExpression);
+            var eventGroups = flow == null
+                ? new List<FlowEventGroup>()
+                : BuildFlowEventGroups(flow.Blocks, "projectile_update");
+            var spawnGroups = eventGroups.Where(group => group.EventId == "projectile_on_spawn").ToList();
+            var updateGroups = eventGroups.Where(group => group.EventId == "projectile_update").ToList();
+            var hitNpcGroups = eventGroups.Where(group => group.EventId == "projectile_on_hit_npc").ToList();
+            var hitPlayerGroups = eventGroups.Where(group => group.EventId == "projectile_on_hit_player").ToList();
+
+            if (spawnGroups.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        public override void OnSpawn(IEntitySource source)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            Player player = Main.player[Math.Clamp(Projectile.owner, 0, Main.maxPlayers - 1)];");
+                sb.AppendLine("            NPC npc = null;");
+                sb.AppendLine("            Player targetPlayer = null;");
+                sb.AppendLine("            Projectile projectile = Projectile;");
+                AppendFlowGroupBodies(sb, spawnGroups, 12, "player.GetSource_FromThis()", "projectile");
+                sb.AppendLine("        }");
+            }
+
+            if (hasAnimation || updateGroups.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        public override void AI()");
+                sb.AppendLine("        {");
+                if (hasAnimation)
+                {
+                    sb.AppendLine("            Projectile.frameCounter++;");
+                    sb.AppendLine("            if (Projectile.frameCounter >= 5)");
+                    sb.AppendLine("            {");
+                    sb.AppendLine("                Projectile.frameCounter = 0;");
+                    sb.AppendLine($"                Projectile.frame = (Projectile.frame + 1) % {frameCount};");
+                    sb.AppendLine("            }");
+                    if (updateGroups.Count > 0)
+                        sb.AppendLine();
+                }
+                if (updateGroups.Count > 0)
+                {
+                    sb.AppendLine("            Player player = Main.player[Math.Clamp(Projectile.owner, 0, Main.maxPlayers - 1)];");
+                    sb.AppendLine("            NPC npc = null;");
+                    sb.AppendLine("            Player targetPlayer = null;");
+                    sb.AppendLine("            Projectile projectile = Projectile;");
+                    AppendFlowGroupBodies(sb, updateGroups, 12, "player.GetSource_FromThis()", "projectile");
+                }
+                sb.AppendLine("        }");
+            }
+
+            if (hitNpcGroups.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            Player player = Main.player[Math.Clamp(Projectile.owner, 0, Main.maxPlayers - 1)];");
+                sb.AppendLine("            NPC npc = target;");
+                sb.AppendLine("            Player targetPlayer = null;");
+                sb.AppendLine("            Projectile projectile = Projectile;");
+                AppendFlowGroupBodies(sb, hitNpcGroups, 12, "player.GetSource_FromThis()", "projectile");
+                sb.AppendLine("        }");
+            }
+
+            if (hitPlayerGroups.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        public override void OnHitPlayer(Player target, Player.HurtInfo info)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            Player player = Main.player[Math.Clamp(Projectile.owner, 0, Main.maxPlayers - 1)];");
+                sb.AppendLine("            NPC npc = null;");
+                sb.AppendLine("            Player targetPlayer = target;");
+                sb.AppendLine("            Projectile projectile = Projectile;");
+                AppendFlowGroupBodies(sb, hitPlayerGroups, 12, "player.GetSource_FromThis()", "projectile");
+                sb.AppendLine("        }");
+            }
+
+            if (eventGroups.Count > 0)
+                AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+        }
+
+        private static void AppendFlowGroupBodies(System.Text.StringBuilder sb, IEnumerable<FlowEventGroup> groups, int indent, string sourceExpression = "player.GetSource_ItemUse(Item)", string projectileExpression = "null")
+        {
+            var context = new FlowGenerationContext(sourceExpression, projectileExpression);
             foreach (var group in groups)
             {
                 AppendLine(sb, indent, $"// {GetFlowEventComment(group.EventId)}");
@@ -2585,6 +3322,12 @@ namespace tmcreator
                     AppendLine(sb, indent, $"Projectile.NewProjectile({context.SourceExpression}, player.Center, {directionVar} * {speed}, {projectile}, {damage}, 0f, player.whoAmI);");
                     break;
                 }
+                case "set_projectile_speed":
+                {
+                    string speed = GetFloatExpression(block, "speed", "10");
+                    AppendLine(sb, indent, $"Flow_SetProjectileSpeed({context.ProjectileExpression}, player, {speed});");
+                    break;
+                }
                 case "spawn_particles":
                 {
                     string selector = GetParamString(block, "target", "player");
@@ -2618,6 +3361,20 @@ namespace tmcreator
                     string value = GetIntExpression(block, "value", "0");
                     AppendLine(sb, indent, $"Flow_ForEachNpc(player, npc, targetPlayer, \"{EscapeString(selector)}\", flowNpc => Flow_SetNpcValue(flowNpc, \"{EscapeString(stat)}\", {value}));");
                     AppendLine(sb, indent, $"Flow_ForEachPlayer(player, targetPlayer, \"{EscapeString(selector)}\", flowPlayer => Flow_SetPlayerValue(flowPlayer, \"{EscapeString(stat)}\", {value}));");
+                    break;
+                }
+                case "temporary_stat":
+                {
+                    string selector = GetParamString(block, "target", "player");
+                    string operation = GetParamString(block, "operation", "add");
+                    string amount = GetFloatExpression(block, "amount", "10");
+                    string stat = GetParamString(block, "stat", "damage");
+                    string damageType = GetParamString(block, "damage_type", "generic");
+                    string duration = GetIntExpression(block, "duration", "5");
+                    string signedAmount = operation == "subtract" ? $"-({amount})" : amount;
+                    string statKey = stat is "damage" or "crit" ? $"{damageType}_{stat}" : stat;
+                    AppendLine(sb, indent, $"Flow_ForEachNpc(player, npc, targetPlayer, \"{EscapeString(selector)}\", flowNpc => Flow_AddTemporaryNpcStat(flowNpc, \"{EscapeString(statKey)}\", {signedAmount}, {duration} * 60));");
+                    AppendLine(sb, indent, $"Flow_ForEachPlayer(player, targetPlayer, \"{EscapeString(selector)}\", flowPlayer => Flow_AddTemporaryPlayerStat(flowPlayer, \"{EscapeString(statKey)}\", {signedAmount}, {duration} * 60));");
                     break;
                 }
                 case "create_variable":
@@ -2805,7 +3562,7 @@ namespace tmcreator
             return doubleValue.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "f";
         }
 
-        private static void AppendFlowHelpers(System.Text.StringBuilder sb)
+        private static void AppendFlowHelpers(System.Text.StringBuilder sb, string tempStatPlayerClassName, string tempStatNpcClassName)
         {
             sb.AppendLine();
             sb.AppendLine("        private void Flow_ForEachNpc(Player player, NPC npc, Player targetPlayer, string selector, Action<NPC> action)");
@@ -3013,6 +3770,24 @@ namespace tmcreator
             sb.AppendLine("        }");
 
             sb.AppendLine();
+            sb.AppendLine("        private static void Flow_AddTemporaryPlayerStat(Player target, string stat, float amount, int durationTicks)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (target == null || !target.active || target.dead)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine($"            target.GetModPlayer<{tempStatPlayerClassName}>().AddModifier(stat, amount, durationTicks);");
+            sb.AppendLine("        }");
+
+            sb.AppendLine();
+            sb.AppendLine("        private static void Flow_AddTemporaryNpcStat(NPC target, string stat, float amount, int durationTicks)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (target == null || !target.active)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine($"            target.GetGlobalNPC<{tempStatNpcClassName}>().AddModifier(stat, amount, durationTicks);");
+            sb.AppendLine("        }");
+
+            sb.AppendLine();
             sb.AppendLine("        private static void Flow_Broadcast(string message)");
             sb.AppendLine("        {");
             sb.AppendLine("            if (Main.netMode != NetmodeID.Server)");
@@ -3033,6 +3808,19 @@ namespace tmcreator
             sb.AppendLine("        }");
 
             sb.AppendLine();
+            sb.AppendLine("        private static void Flow_SetProjectileSpeed(Projectile projectile, Player player, float speed)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (projectile == null || !projectile.active)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine("            Vector2 direction = projectile.velocity;");
+            sb.AppendLine("            if (direction.LengthSquared() < 0.001f)");
+            sb.AppendLine("                direction = new Vector2(player != null && player.direction < 0 ? -1f : 1f, 0f);");
+            sb.AppendLine("            direction.Normalize();");
+            sb.AppendLine("            projectile.velocity = direction * Math.Max(0f, speed);");
+            sb.AppendLine("        }");
+
+            sb.AppendLine();
             sb.AppendLine("        private static void Flow_SpawnParticles(Vector2 center, int dustId, int count, float speed)");
             sb.AppendLine("        {");
             sb.AppendLine("            if (Main.netMode == NetmodeID.Server)");
@@ -3050,6 +3838,152 @@ namespace tmcreator
             sb.AppendLine("        }");
         }
 
+        private static void AppendFlowTempStatsPlayerClass(System.Text.StringBuilder sb, string className)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"    public class {className} : ModPlayer");
+            sb.AppendLine("    {");
+            sb.AppendLine("        private readonly System.Collections.Generic.List<FlowTimedStatModifier> _modifiers = new();");
+            sb.AppendLine();
+            sb.AppendLine("        public void AddModifier(string stat, float amount, int durationTicks)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (string.IsNullOrWhiteSpace(stat) || Math.Abs(amount) <= 0.0001f)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine("            for (int i = 0; i < _modifiers.Count; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                FlowTimedStatModifier existing = _modifiers[i];");
+            sb.AppendLine("                if (existing.Stat == stat && Math.Abs(existing.Amount - amount) <= 0.0001f)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    existing.TimeLeft = Math.Max(existing.TimeLeft, Math.Max(1, durationTicks));");
+            sb.AppendLine("                    _modifiers[i] = existing;");
+            sb.AppendLine("                    return;");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            _modifiers.Add(new FlowTimedStatModifier");
+            sb.AppendLine("            {");
+            sb.AppendLine("                Stat = stat,");
+            sb.AppendLine("                Amount = amount,");
+            sb.AppendLine("                TimeLeft = Math.Max(1, durationTicks)");
+            sb.AppendLine("            });");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public override void ResetEffects()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            for (int i = _modifiers.Count - 1; i >= 0; i--)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                FlowTimedStatModifier modifier = _modifiers[i];");
+            sb.AppendLine("                ApplyModifier(modifier.Stat, modifier.Amount);");
+            sb.AppendLine("                modifier.TimeLeft--;");
+            sb.AppendLine();
+            sb.AppendLine("                if (modifier.TimeLeft <= 0)");
+            sb.AppendLine("                    _modifiers.RemoveAt(i);");
+            sb.AppendLine("                else");
+            sb.AppendLine("                    _modifiers[i] = modifier;");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private void ApplyModifier(string stat, float amount)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            switch (stat)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                case \"defense\": Player.statDefense += (int)Math.Round(amount); break;");
+            sb.AppendLine("                case \"damage_reduction\": Player.endurance += amount / 100f; break;");
+            sb.AppendLine("                case \"melee_damage\": Player.GetDamage(DamageClass.Melee) += amount / 100f; break;");
+            sb.AppendLine("                case \"magic_damage\": Player.GetDamage(DamageClass.Magic) += amount / 100f; break;");
+            sb.AppendLine("                case \"ranged_damage\": Player.GetDamage(DamageClass.Ranged) += amount / 100f; break;");
+            sb.AppendLine("                case \"summon_damage\": Player.GetDamage(DamageClass.Summon) += amount / 100f; break;");
+            sb.AppendLine("                case \"generic_damage\": Player.GetDamage(DamageClass.Generic) += amount / 100f; break;");
+            sb.AppendLine("                case \"melee_crit\": Player.GetCritChance(DamageClass.Melee) += amount; break;");
+            sb.AppendLine("                case \"magic_crit\": Player.GetCritChance(DamageClass.Magic) += amount; break;");
+            sb.AppendLine("                case \"ranged_crit\": Player.GetCritChance(DamageClass.Ranged) += amount; break;");
+            sb.AppendLine("                case \"summon_crit\": Player.GetCritChance(DamageClass.Summon) += amount; break;");
+            sb.AppendLine("                case \"generic_crit\": Player.GetCritChance(DamageClass.Generic) += amount; break;");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private struct FlowTimedStatModifier");
+            sb.AppendLine("        {");
+            sb.AppendLine("            public string Stat;");
+            sb.AppendLine("            public float Amount;");
+            sb.AppendLine("            public int TimeLeft;");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+        }
+
+        private static void AppendFlowTempStatsNpcClass(System.Text.StringBuilder sb, string className)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"    public class {className} : GlobalNPC");
+            sb.AppendLine("    {");
+            sb.AppendLine("        private readonly System.Collections.Generic.List<FlowTimedStatModifier> _modifiers = new();");
+            sb.AppendLine();
+            sb.AppendLine("        public override bool InstancePerEntity => true;");
+            sb.AppendLine();
+            sb.AppendLine("        public void AddModifier(string stat, float amount, int durationTicks)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (string.IsNullOrWhiteSpace(stat) || Math.Abs(amount) <= 0.0001f)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine("            for (int i = 0; i < _modifiers.Count; i++)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                FlowTimedStatModifier existing = _modifiers[i];");
+            sb.AppendLine("                if (existing.Stat == stat && Math.Abs(existing.Amount - amount) <= 0.0001f)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    existing.TimeLeft = Math.Max(existing.TimeLeft, Math.Max(1, durationTicks));");
+            sb.AppendLine("                    _modifiers[i] = existing;");
+            sb.AppendLine("                    return;");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            sb.AppendLine();
+            sb.AppendLine("            _modifiers.Add(new FlowTimedStatModifier");
+            sb.AppendLine("            {");
+            sb.AppendLine("                Stat = stat,");
+            sb.AppendLine("                Amount = amount,");
+            sb.AppendLine("                TimeLeft = Math.Max(1, durationTicks)");
+            sb.AppendLine("            });");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public override void ResetEffects(NPC npc)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            for (int i = _modifiers.Count - 1; i >= 0; i--)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                FlowTimedStatModifier modifier = _modifiers[i];");
+            sb.AppendLine("                ApplyModifier(npc, modifier.Stat, modifier.Amount);");
+            sb.AppendLine("                modifier.TimeLeft--;");
+            sb.AppendLine();
+            sb.AppendLine("                if (modifier.TimeLeft <= 0)");
+            sb.AppendLine("                    _modifiers.RemoveAt(i);");
+            sb.AppendLine("                else");
+            sb.AppendLine("                    _modifiers[i] = modifier;");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private static void ApplyModifier(NPC npc, string stat, float amount)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            switch (stat)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                case \"defense\": npc.defense += (int)Math.Round(amount); break;");
+            sb.AppendLine("                case \"melee_damage\":");
+            sb.AppendLine("                case \"magic_damage\":");
+            sb.AppendLine("                case \"ranged_damage\":");
+            sb.AppendLine("                case \"summon_damage\":");
+            sb.AppendLine("                case \"generic_damage\":");
+            sb.AppendLine("                    npc.damage = Math.Max(0, npc.damage + (int)Math.Round(amount));");
+            sb.AppendLine("                    break;");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private struct FlowTimedStatModifier");
+            sb.AppendLine("        {");
+            sb.AppendLine("            public string Stat;");
+            sb.AppendLine("            public float Amount;");
+            sb.AppendLine("            public int TimeLeft;");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+        }
+
         private static string GetFlowEventComment(string eventId) => eventId switch
         {
             "on_hit_npc" => "When this item hits an NPC",
@@ -3058,6 +3992,14 @@ namespace tmcreator
             "buff_on_gain" => "When this buff is gained",
             "buff_update" => "While this buff is active",
             "buff_on_end" => "When this buff ends",
+            "projectile_on_spawn" => "When this projectile is fired",
+            "projectile_on_hit_npc" => "When this projectile hits an NPC",
+            "projectile_on_hit_player" => "When this projectile hits a player",
+            "projectile_update" => "While this projectile exists",
+            "accessory_wearing" => "While this accessory is worn",
+            "accessory_attack" => "When attacking while this accessory is worn",
+            "accessory_unequip" => "When this accessory is removed",
+            "accessory_equip" => "When this accessory is equipped",
             _ => "When this item is used"
         };
 
@@ -3088,12 +4030,14 @@ namespace tmcreator
         {
             private int _index;
 
-            public FlowGenerationContext(string sourceExpression)
+            public FlowGenerationContext(string sourceExpression, string projectileExpression)
             {
                 SourceExpression = sourceExpression;
+                ProjectileExpression = projectileExpression;
             }
 
             public string SourceExpression { get; }
+            public string ProjectileExpression { get; }
 
             public string Next(string prefix)
             {

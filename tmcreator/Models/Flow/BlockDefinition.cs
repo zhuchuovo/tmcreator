@@ -79,6 +79,14 @@ public static class BlockRegistry
         new() { Id = "buff_on_gain", Name = "获得效果时", Category = BlockCategory.Event },
         new() { Id = "buff_update", Name = "持续时间内时", Category = BlockCategory.Event },
         new() { Id = "buff_on_end", Name = "效果消失时", Category = BlockCategory.Event },
+        new() { Id = "projectile_on_spawn", Name = "当弹幕发射时", Category = BlockCategory.Event },
+        new() { Id = "projectile_on_hit_npc", Name = "当弹幕命中时", Category = BlockCategory.Event },
+        new() { Id = "projectile_on_hit_player", Name = "当弹幕击中玩家时", Category = BlockCategory.Event },
+        new() { Id = "projectile_update", Name = "当弹幕存在时", Category = BlockCategory.Event },
+        new() { Id = "accessory_wearing", Name = "当穿戴饰品时", Category = BlockCategory.Event },
+        new() { Id = "accessory_attack", Name = "穿戴饰品攻击时", Category = BlockCategory.Event },
+        new() { Id = "accessory_unequip", Name = "脱下饰品时", Category = BlockCategory.Event },
+        new() { Id = "accessory_equip", Name = "安装饰品时", Category = BlockCategory.Event },
 
         // Conditions
         new() { Id = "if_hp", Name = "如果 生命值", Category = BlockCategory.Condition,
@@ -136,6 +144,10 @@ public static class BlockRegistry
                 new() { Name = "damage", Label = "伤害", Type = ParamType.Number, DefaultValue = "50" },
                 new() { Name = "speed", Label = "速度", Type = ParamType.Number, DefaultValue = "10" }
             }},
+        new() { Id = "set_projectile_speed", Name = "弹幕速度 =", Category = BlockCategory.Action,
+            Params = {
+                new() { Name = "speed", Label = "速度", Type = ParamType.Number, DefaultValue = "10" }
+            }},
         new() { Id = "spawn_particles", Name = "释放粒子", Category = BlockCategory.Action,
             Params = {
                 new() { Name = "target", Label = "位置", Type = ParamType.Target, DefaultValue = "player" },
@@ -158,6 +170,15 @@ public static class BlockRegistry
                 new() { Name = "target", Label = "目标", Type = ParamType.Target, DefaultValue = "npc" },
                 new() { Name = "stat", Label = "属性", Type = ParamType.Dropdown, DefaultValue = "life", Options = new[]{"life", "damage", "defense"} },
                 new() { Name = "value", Label = "值", Type = ParamType.Number, DefaultValue = "0" }
+            }},
+        new() { Id = "temporary_stat", Name = "临时增减属性", Category = BlockCategory.Action,
+            Params = {
+                new() { Name = "operation", Label = "方式", Type = ParamType.Dropdown, DefaultValue = "add", Options = new[]{"add 增加", "subtract 减少"} },
+                new() { Name = "target", Label = "事件目标", Type = ParamType.Target, DefaultValue = "player" },
+                new() { Name = "amount", Label = "数值", Type = ParamType.Number, DefaultValue = "10" },
+                new() { Name = "stat", Label = "属性", Type = ParamType.Dropdown, DefaultValue = "damage", Options = new[]{"defense 防御", "damage 伤害", "damage_reduction 百分比减伤", "crit 暴击率"} },
+                new() { Name = "damage_type", Label = "职业", Type = ParamType.DamageType, DefaultValue = "generic" },
+                new() { Name = "duration", Label = "持续(秒)", Type = ParamType.Number, DefaultValue = "5" }
             }},
         new() { Id = "create_variable", Name = "创建变量", Category = BlockCategory.Action,
             Params = {
