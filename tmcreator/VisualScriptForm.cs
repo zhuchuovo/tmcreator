@@ -8,7 +8,11 @@ namespace tmcreator
 {
     public partial class VisualScriptForm : UIForm
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
         private readonly ModItemData _item;
+        private readonly List<string> _projectileReferences;
         private readonly List<BlockInstance> _topBlocks = new();
 
         private readonly Panel _header = new BufferedPanel();
@@ -25,10 +29,28 @@ namespace tmcreator
         private readonly UIButton _btnSave = new();
         private readonly UIButton _btnClear = new();
         private int _canvasContentHeight;
+        private int _canvasContentWidth;
+        private float _canvasZoom = 1f;
 
+        private const int WmSetRedraw = 0x000B;
         private const string DragFormat = "tmcreator.flow.block";
+        private const int CanvasGridSize = 24;
+        private const int CanvasDefaultBlockWidth = 560;
+        private const int CanvasMinimumBlockWidth = 420;
+        private const float CanvasMinZoom = 0.65f;
+        private const float CanvasMaxZoom = 1.65f;
+        private const int BranchDropHitPadding = 36;
+        private const int ParamDropHitPadding = 14;
+        private const int DropOverlapThreshold = 80;
+        private const int CanvasDragAutoScrollMargin = 56;
+        private const int CanvasDragAutoScrollStep = 28;
         private Point _dragStartScreenPoint;
         private Control? _dragSourceControl;
+        private TopLevelDragState? _topLevelDrag;
+        private bool _canvasPanning;
+        private bool _canvasPanStarted;
+        private Point _canvasPanStartScreenPoint;
+        private int _canvasPanStartScroll;
 
         private static readonly HashSet<string> ItemEventIds = new()
         {
@@ -82,9 +104,16 @@ namespace tmcreator
         private static readonly Font FontBodyBold = new("Microsoft YaHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
         private static readonly Font FontSmall = new("Microsoft YaHei UI", 8F, FontStyle.Regular, GraphicsUnit.Point);
 
-        public VisualScriptForm(ModItemData item)
+        public VisualScriptForm(ModItemData item, IEnumerable<ModItemData>? projectItems = null)
         {
             _item = item;
+            _projectileReferences = (projectItems ?? Enumerable.Empty<ModItemData>())
+                .Where(projectItem => projectItem.Type == ItemType.Projectile)
+                .Select(projectItem => projectItem.Name.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             Text = $"流程编辑 - {item.DisplayName}";
             ClientSize = new Size(1180, 760);
@@ -299,13 +328,23 @@ namespace tmcreator
 
             _canvas.AutoScroll = false;
             _canvas.AllowDrop = true;
+            _canvas.TabStop = true;
             _canvas.BackColor = ClrCanvas;
             _canvas.Paint += Canvas_Paint;
             _canvas.MouseWheel += Canvas_MouseWheel;
+            _canvas.MouseEnter += (s, e) => _canvas.Focus();
+            _canvas.MouseDown += CanvasPan_MouseDown;
+            _canvas.MouseMove += CanvasPan_MouseMove;
+            _canvas.MouseUp += CanvasPan_MouseUp;
             _canvas.DragEnter += Canvas_DragEnter;
+            _canvas.DragOver += Canvas_DragEnter;
             _canvas.DragDrop += Canvas_DragDrop;
             _canvasViewport.AllowDrop = true;
+            _canvasViewport.MouseDown += CanvasPan_MouseDown;
+            _canvasViewport.MouseMove += CanvasPan_MouseMove;
+            _canvasViewport.MouseUp += CanvasPan_MouseUp;
             _canvasViewport.DragEnter += Canvas_DragEnter;
+            _canvasViewport.DragOver += Canvas_DragEnter;
             _canvasViewport.DragDrop += Canvas_DragDrop;
             _workspace.Controls.Add(_canvasViewport);
             _workspace.Controls.Add(_canvasScroll);
@@ -395,13 +434,131 @@ namespace tmcreator
         private void LayoutCanvasContent()
         {
             int contentHeight = Math.Max(_canvasContentHeight, _canvasViewport.Height);
+            int contentWidth = Math.Max(_canvasContentWidth, _canvasViewport.Width);
             ConfigureScrollBar(_canvasScroll, contentHeight, _canvasViewport.Height);
-            _canvas.SetBounds(0, -_canvasScroll.Value, Math.Max(10, _canvasViewport.Width), Math.Max(contentHeight, _canvasViewport.Height));
+            _canvas.SetBounds(0, -_canvasScroll.Value, Math.Max(10, contentWidth), Math.Max(contentHeight, _canvasViewport.Height));
         }
 
         private void Canvas_MouseWheel(object? sender, MouseEventArgs e)
         {
-            ScrollBarByWheel(_canvasScroll, e.Delta);
+            float step = e.Delta > 0 ? 1.1f : 1 / 1.1f;
+            float nextZoom = Math.Clamp(_canvasZoom * step, CanvasMinZoom, CanvasMaxZoom);
+            if (Math.Abs(nextZoom - _canvasZoom) < 0.001f)
+                return;
+
+            ApplyCanvasZoom(nextZoom);
+        }
+
+        private void ApplyCanvasZoom(float nextZoom)
+        {
+            if (_canvas.Controls.Count == 0 || _topLevelDrag != null)
+                return;
+
+            float previousZoom = _canvasZoom;
+            float ratio = nextZoom / previousZoom;
+            _canvasZoom = nextZoom;
+
+            SetRedraw(_canvasViewport, false);
+            SetRedraw(_canvas, false);
+            _canvas.SuspendLayout();
+            try
+            {
+                foreach (Control child in _canvas.Controls)
+                {
+                    child.Scale(new SizeF(ratio, ratio));
+                    HookCanvasInteractions(child);
+                }
+
+                var bounds = GetChildrenBounds(_canvas);
+                _canvasContentWidth = Math.Max(_canvasViewport.Width, bounds.Right + Zoom(72));
+                _canvasContentHeight = Math.Max(_canvasViewport.Height, bounds.Bottom + Zoom(72));
+                LayoutCanvasContent();
+                UpdateSummary();
+            }
+            finally
+            {
+                _canvas.ResumeLayout(false);
+                SetRedraw(_canvas, true);
+                SetRedraw(_canvasViewport, true);
+                _canvasViewport.Invalidate(true);
+                _canvas.Invalidate(true);
+            }
+        }
+
+        private void CanvasPan_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button is not (MouseButtons.Left or MouseButtons.Middle))
+                return;
+
+            if (_dragSourceControl != null || _topLevelDrag != null || _canvasPanning)
+                return;
+
+            if (e.Button == MouseButtons.Left && !CanStartCanvasPan(sender as Control))
+                return;
+
+            _canvasPanning = true;
+            _canvasPanStarted = false;
+            _canvasPanStartScreenPoint = Control.MousePosition;
+            _canvasPanStartScroll = _canvasScroll.Value;
+            if (sender is Control control)
+                control.Capture = true;
+
+            _canvas.Cursor = Cursors.Hand;
+        }
+
+        private void CanvasPan_MouseMove(object? sender, MouseEventArgs e)
+        {
+            if (!_canvasPanning)
+                return;
+
+            var current = Control.MousePosition;
+            int deltaY = current.Y - _canvasPanStartScreenPoint.Y;
+            if (!_canvasPanStarted && Math.Abs(deltaY) < SystemInformation.DragSize.Height / 2)
+                return;
+
+            _canvasPanStarted = true;
+            SetCanvasScrollValue(_canvasPanStartScroll - deltaY);
+        }
+
+        private void CanvasPan_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (!_canvasPanning || e.Button is not (MouseButtons.Left or MouseButtons.Middle))
+                return;
+
+            _canvasPanning = false;
+            _canvasPanStarted = false;
+            if (sender is Control control)
+                control.Capture = false;
+
+            _canvas.Cursor = Cursors.Default;
+        }
+
+        private bool CanStartCanvasPan(Control? control)
+        {
+            while (control != null && control != _canvasViewport)
+            {
+                if (control is TextBoxBase or ComboBox or ButtonBase)
+                    return false;
+
+                if (control.Tag is BlockInstance or BranchTag or ParamSlotTag)
+                    return false;
+
+                if (control.Tag is TopLevelBlockTag)
+                    return true;
+
+                control = control.Parent;
+            }
+
+            return true;
+        }
+
+        private void SetCanvasScrollValue(int value)
+        {
+            if (!_canvasScroll.Visible)
+                return;
+
+            int maxValue = Math.Max(0, _canvasScroll.Maximum - _canvasScroll.LargeChange + 1);
+            _canvasScroll.Value = Math.Clamp(value, _canvasScroll.Minimum, maxValue);
         }
 
         private static int GetFlowContentHeight(FlowLayoutPanel panel)
@@ -450,7 +607,9 @@ namespace tmcreator
             if ((sender as Control)?.Tag is not BlockDefinition definition)
                 return;
 
-            _topBlocks.Add(CreateBlockInstance(definition));
+            var block = CreateBlockInstance(definition);
+            PlaceNewTopLevelBlock(block);
+            _topBlocks.Add(block);
             RebuildCanvas();
         }
 
@@ -472,6 +631,12 @@ namespace tmcreator
 
                 StartBlockDrag(control, new BlockDragData { Definition = definition });
             };
+
+            control.MouseUp += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left && _dragSourceControl == control)
+                    _dragSourceControl = null;
+            };
         }
 
         private void RegisterExistingBlockDrag(Control control, BlockInstance block)
@@ -483,6 +648,7 @@ namespace tmcreator
 
                 _dragStartScreenPoint = Control.MousePosition;
                 _dragSourceControl = control;
+                BeginExistingBlockDrag(control, block);
             };
 
             control.MouseMove += (s, e) =>
@@ -490,7 +656,23 @@ namespace tmcreator
                 if (e.Button != MouseButtons.Left || _dragSourceControl != control || !HasDraggedFarEnough())
                     return;
 
-                StartBlockDrag(control, new BlockDragData { ExistingBlock = block });
+                if (_topLevelDrag?.Source == control)
+                {
+                    MoveTopLevelBlockDrag();
+                    return;
+                }
+
+                StartBlockDrag(control, new BlockDragData { ExistingBlock = block, DropOffset = GetBlockDropOffset(block) });
+            };
+
+            control.MouseUp += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Left || _dragSourceControl != control)
+                    return;
+
+                EndTopLevelBlockDrag();
+                _dragSourceControl = null;
+                control.Capture = false;
             };
         }
 
@@ -503,10 +685,354 @@ namespace tmcreator
 
         private void StartBlockDrag(Control source, BlockDragData data)
         {
+            _topLevelDrag = null;
             _dragSourceControl = null;
             var dataObject = new DataObject();
             dataObject.SetData(DragFormat, data);
             source.DoDragDrop(dataObject, DragDropEffects.Copy | DragDropEffects.Move);
+        }
+
+        private void BeginExistingBlockDrag(Control source, BlockInstance block)
+        {
+            _topLevelDrag = null;
+
+            bool isTopLevel = _topBlocks.Contains(block);
+            Control? container = isTopLevel
+                ? FindTopLevelBlockContainer(source)
+                : CreateDetachedBlockPreview(source, block, out _);
+            if (container == null)
+                return;
+
+            Point canvasPoint = _canvas.PointToClient(Control.MousePosition);
+            _topLevelDrag = new TopLevelDragState
+            {
+                Block = block,
+                Source = source,
+                Container = container,
+                Offset = new Point(canvasPoint.X - container.Left, canvasPoint.Y - container.Top),
+                OriginalLocation = container.Location,
+                IsDetachedPreview = !isTopLevel
+            };
+            source.Capture = true;
+        }
+
+        private Control? CreateDetachedBlockPreview(Control source, BlockInstance block, out Rectangle sourceBounds)
+        {
+            sourceBounds = Rectangle.Empty;
+            var blockCard = FindRenderedBlockCard(source, block);
+            if (blockCard == null)
+                return null;
+
+            sourceBounds = GetCanvasBounds(blockCard);
+            if (sourceBounds.Width <= 0 || sourceBounds.Height <= 0)
+                return null;
+
+            var bitmap = new Bitmap(sourceBounds.Width, sourceBounds.Height);
+            blockCard.DrawToBitmap(bitmap, new Rectangle(Point.Empty, blockCard.Size));
+
+            var preview = new BufferedPanel
+            {
+                Bounds = sourceBounds,
+                BackColor = ClrCanvas,
+                BackgroundImage = bitmap,
+                BackgroundImageLayout = ImageLayout.Stretch,
+                Visible = false,
+                Enabled = false
+            };
+
+            preview.Paint += (s, e) =>
+            {
+                using var border = new Pen(Color.FromArgb(180, ClrAccent));
+                e.Graphics.DrawRectangle(border, 0, 0, preview.Width - 1, preview.Height - 1);
+            };
+
+            _canvas.Controls.Add(preview);
+            preview.BringToFront();
+            return preview;
+        }
+
+        private Panel? FindRenderedBlockCard(Control? control, BlockInstance block)
+        {
+            while (control != null && control != _canvas)
+            {
+                if (control is Panel panel && IsRenderedBlockCard(panel, block))
+                    return panel;
+
+                control = control.Parent;
+            }
+
+            return null;
+        }
+
+        private static bool IsRenderedBlockCard(Panel panel, BlockInstance block)
+        {
+            if (ReferenceEquals(panel.Tag, block))
+                return true;
+
+            if (panel.Tag is not BranchTag branch || !ReferenceEquals(branch.Block, block))
+                return false;
+
+            return panel.Controls.OfType<Panel>().Any(child =>
+                child.Location == new Point(1, 1) &&
+                child.Height is >= 38 and <= 44);
+        }
+
+        private void MoveTopLevelBlockDrag()
+        {
+            if (_topLevelDrag == null)
+                return;
+
+            if (!_topLevelDrag.Started)
+            {
+                _topLevelDrag.Started = true;
+                _topLevelDrag.Container.Visible = true;
+                _topLevelDrag.Container.BringToFront();
+            }
+
+            AutoScrollCanvasDuringDrag();
+            Point canvasPoint = _canvas.PointToClient(Control.MousePosition);
+            var next = new Point(
+                Math.Max(0, canvasPoint.X - _topLevelDrag.Offset.X),
+                Math.Max(0, canvasPoint.Y - _topLevelDrag.Offset.Y));
+
+            if (next == _topLevelDrag.Container.Location)
+                return;
+
+            Rectangle dirty = Rectangle.Union(_topLevelDrag.Container.Bounds, new Rectangle(next, _topLevelDrag.Container.Size));
+            _topLevelDrag.Container.Location = next;
+            ExtendCanvasForDrag(new Rectangle(next, _topLevelDrag.Container.Size));
+            _canvas.Invalidate(dirty);
+        }
+
+        private void AutoScrollCanvasDuringDrag()
+        {
+            Point viewportPoint = _canvasViewport.PointToClient(Control.MousePosition);
+            if (viewportPoint.Y > _canvasViewport.Height - CanvasDragAutoScrollMargin)
+            {
+                SetCanvasScrollValue(_canvasScroll.Value + CanvasDragAutoScrollStep);
+            }
+            else if (viewportPoint.Y < CanvasDragAutoScrollMargin)
+            {
+                SetCanvasScrollValue(_canvasScroll.Value - CanvasDragAutoScrollStep);
+            }
+        }
+
+        private void ExtendCanvasForDrag(Rectangle dragBounds)
+        {
+            int neededWidth = Math.Max(_canvasContentWidth, dragBounds.Right + Zoom(96));
+            int neededHeight = Math.Max(_canvasContentHeight, dragBounds.Bottom + Zoom(96));
+            if (neededWidth == _canvasContentWidth && neededHeight == _canvasContentHeight)
+                return;
+
+            _canvasContentWidth = neededWidth;
+            _canvasContentHeight = neededHeight;
+            LayoutCanvasContent();
+        }
+
+        private void EndTopLevelBlockDrag()
+        {
+            if (_topLevelDrag == null)
+                return;
+
+            try
+            {
+                if (_topLevelDrag.Started)
+                {
+                    if (TryAttachTopLevelDrag())
+                    {
+                        RebuildCanvas();
+                        return;
+                    }
+
+                    if (_topLevelDrag.IsDetachedPreview)
+                    {
+                        RemoveBlock(_topLevelDrag.Block);
+                        _topBlocks.Add(_topLevelDrag.Block);
+                    }
+
+                    _topLevelDrag.Block.CanvasX = Math.Max(16, SnapToGrid(Unzoom(_topLevelDrag.Container.Left)));
+                    _topLevelDrag.Block.CanvasY = Math.Max(16, SnapToGrid(Unzoom(_topLevelDrag.Container.Top)));
+                    RebuildCanvas();
+                }
+                else
+                {
+                    _topLevelDrag.Container.Location = _topLevelDrag.OriginalLocation;
+                }
+            }
+            finally
+            {
+                _topLevelDrag.Source.Capture = false;
+                if (_topLevelDrag.IsDetachedPreview)
+                {
+                    var background = _topLevelDrag.Container.BackgroundImage;
+                    _canvas.Controls.Remove(_topLevelDrag.Container);
+                    _topLevelDrag.Container.Dispose();
+                    background?.Dispose();
+                }
+
+                _topLevelDrag = null;
+            }
+        }
+
+        private Panel? FindTopLevelBlockContainer(Control? control)
+        {
+            while (control != null && control != _canvas)
+            {
+                if (control is Panel panel && panel.Tag is TopLevelBlockTag)
+                    return panel;
+
+                control = control.Parent;
+            }
+
+            return null;
+        }
+
+        private bool TryAttachTopLevelDrag()
+        {
+            if (_topLevelDrag == null)
+                return false;
+
+            var drag = new BlockDragData { ExistingBlock = _topLevelDrag.Block };
+            Control? target = FindCanvasDropTarget(Control.MousePosition, _topLevelDrag.Container);
+            if (TryAttachDragDataToTarget(drag, target))
+                return true;
+
+            return TryAttachDragDataToTarget(drag, FindCanvasDropTargetByProbe(_topLevelDrag.Container.Bounds, _topLevelDrag.Container, drag));
+        }
+
+        private Control? FindCanvasDropTarget(Point screenPoint, Control? excluded)
+        {
+            Point canvasPoint = _canvas.PointToClient(screenPoint);
+            if (!_canvas.ClientRectangle.Contains(canvasPoint))
+                return null;
+
+            return FindDeepestControlAtPoint(_canvas, canvasPoint, excluded);
+        }
+
+        private static Control? FindDeepestControlAtPoint(Control parent, Point point, Control? excluded)
+        {
+            for (int i = parent.Controls.Count - 1; i >= 0; i--)
+            {
+                Control child = parent.Controls[i];
+                if (!child.Visible || ReferenceEquals(child, excluded))
+                    continue;
+
+                if (!child.Bounds.Contains(point))
+                    continue;
+
+                Point childPoint = new(point.X - child.Left, point.Y - child.Top);
+                return FindDeepestControlAtPoint(child, childPoint, excluded) ?? child;
+            }
+
+            return null;
+        }
+
+        private Control? FindCanvasDropTargetNearPoint(Point screenPoint, Control? excluded, BlockDragData drag)
+        {
+            Point canvasPoint = _canvas.PointToClient(screenPoint);
+            if (!_canvas.ClientRectangle.Contains(canvasPoint))
+                return null;
+
+            var probe = new Rectangle(
+                canvasPoint.X - BranchDropHitPadding,
+                canvasPoint.Y - BranchDropHitPadding,
+                BranchDropHitPadding * 2,
+                BranchDropHitPadding * 2);
+
+            return FindCanvasDropTargetByProbe(probe, excluded, drag);
+        }
+
+        private Control? FindCanvasDropTargetByProbe(Rectangle probeCanvasBounds, Control? excluded, BlockDragData drag)
+        {
+            Control? best = null;
+            int bestScore = DropOverlapThreshold;
+
+            foreach (var candidate in EnumerateDropCandidates(_canvas, excluded))
+            {
+                var slot = candidate.Tag as ParamSlotTag;
+                var branch = candidate.Tag as BranchTag;
+                if (slot != null && !CanDropIntoParamSlot(drag, slot))
+                    continue;
+
+                if (slot == null && (branch == null || !CanDropIntoBranch(drag, branch)))
+                    continue;
+
+                var candidateBounds = GetCanvasBounds(candidate);
+                if (candidateBounds.Width <= 0 || candidateBounds.Height <= 0)
+                    continue;
+
+                candidateBounds.Inflate(slot != null ? ParamDropHitPadding : BranchDropHitPadding, slot != null ? ParamDropHitPadding : BranchDropHitPadding);
+                var intersection = Rectangle.Intersect(probeCanvasBounds, candidateBounds);
+                int score = intersection.Width * intersection.Height;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+
+            return best;
+        }
+
+        private static IEnumerable<Control> EnumerateDropCandidates(Control parent, Control? excluded)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                if (!child.Visible || ReferenceEquals(child, excluded))
+                    continue;
+
+                if (child.Tag is ParamSlotTag or BranchTag)
+                    yield return child;
+
+                foreach (var nested in EnumerateDropCandidates(child, excluded))
+                    yield return nested;
+            }
+        }
+
+        private Rectangle GetCanvasBounds(Control control)
+        {
+            return new Rectangle(_canvas.PointToClient(control.PointToScreen(Point.Empty)), control.Size);
+        }
+
+        private bool TryAttachDragDataToTarget(BlockDragData drag, Control? target)
+        {
+            if (target == null)
+                return false;
+
+            var slot = FindParamSlotTag(target);
+            if (slot != null && CanDropIntoParamSlot(drag, slot))
+            {
+                var block = TakeDraggedBlock(drag);
+                if (block == null)
+                    return false;
+
+                slot.Owner.ParamBlocks[slot.Param.Name] = block;
+                return true;
+            }
+
+            var branch = FindBranchTag(target);
+            if (branch != null && CanDropIntoBranch(drag, branch))
+            {
+                var block = TakeDraggedBlock(drag);
+                if (block == null)
+                    return false;
+
+                GetBranchList(branch).Add(block);
+                return true;
+            }
+
+            return false;
+        }
+
+        private BlockInstance? TakeDraggedBlock(BlockDragData drag)
+        {
+            if (drag.ExistingBlock != null)
+            {
+                RemoveBlock(drag.ExistingBlock);
+                return drag.ExistingBlock;
+            }
+
+            return drag.Definition != null ? CreateBlockInstance(drag.Definition) : null;
         }
 
         private static BlockDragData? GetDragData(DragEventArgs e)
@@ -528,15 +1054,28 @@ namespace tmcreator
             if (drag == null)
                 return;
 
-            if (drag.ExistingBlock != null)
+            Control? target = FindCanvasDropTarget(new Point(e.X, e.Y), null);
+            if (TryAttachDragDataToTarget(drag, target))
             {
-                RemoveBlock(drag.ExistingBlock);
-                _topBlocks.Add(drag.ExistingBlock);
+                RebuildCanvas();
+                return;
             }
-            else if (drag.Definition != null)
+
+            target = FindCanvasDropTargetNearPoint(new Point(e.X, e.Y), null, drag);
+            if (TryAttachDragDataToTarget(drag, target))
             {
-                _topBlocks.Add(CreateBlockInstance(drag.Definition));
+                RebuildCanvas();
+                return;
             }
+
+            var dropPoint = GetCanvasDropPoint(e, drag.DropOffset);
+            var block = TakeDraggedBlock(drag);
+            if (block == null)
+                return;
+
+            block.CanvasX = dropPoint.X;
+            block.CanvasY = dropPoint.Y;
+            _topBlocks.Add(block);
 
             RebuildCanvas();
         }
@@ -547,37 +1086,105 @@ namespace tmcreator
                 return;
 
             int scrollY = _canvasScroll.Value;
+            EnsureTopLevelBlockPositions();
+            SetRedraw(_canvasViewport, false);
+            SetRedraw(_canvas, false);
             _canvas.SuspendLayout();
-            _canvas.Controls.Clear();
+            try
+            {
+                ClearCanvasControls();
 
-            int y = 28;
-            if (_topBlocks.Count == 0)
-            {
-                AddEmptyState();
-            }
-            else
-            {
-                foreach (var block in _topBlocks)
+                if (_topBlocks.Count == 0)
                 {
-                    y = RenderBlock(_canvas, block, y, 28);
+                    AddEmptyState();
                 }
-            }
+                else
+                {
+                    foreach (var block in _topBlocks)
+                    {
+                        RenderTopLevelBlock(block);
+                    }
+                }
 
-            _canvas.ResumeLayout(false);
-            _canvasContentHeight = y + 32;
-            LayoutCanvasContent();
-            int maxValue = Math.Max(0, _canvasScroll.Maximum - _canvasScroll.LargeChange + 1);
-            _canvasScroll.Value = Math.Min(scrollY, maxValue);
-            LayoutCanvasContent();
-            UpdateSummary();
-            _canvas.Invalidate();
+                ScaleCanvasControls();
+                var bounds = GetChildrenBounds(_canvas);
+                _canvasContentWidth = Math.Max(_canvasViewport.Width, bounds.Right + Zoom(72));
+                _canvasContentHeight = Math.Max(_canvasViewport.Height, bounds.Bottom + Zoom(72));
+                LayoutCanvasContent();
+                int maxValue = Math.Max(0, _canvasScroll.Maximum - _canvasScroll.LargeChange + 1);
+                _canvasScroll.Value = Math.Min(scrollY, maxValue);
+                LayoutCanvasContent();
+                UpdateSummary();
+            }
+            finally
+            {
+                _canvas.ResumeLayout(false);
+
+                SetRedraw(_canvas, true);
+                SetRedraw(_canvasViewport, true);
+                _canvasViewport.Invalidate(true);
+                _canvas.Invalidate(true);
+            }
+        }
+
+        private void ClearCanvasControls()
+        {
+            var controls = _canvas.Controls.Cast<Control>().ToArray();
+            _canvas.Controls.Clear();
+            foreach (var control in controls)
+            {
+                ReleaseControlImages(control);
+                control.Dispose();
+            }
+        }
+
+        private static void ReleaseControlImages(Control control)
+        {
+            foreach (Control child in control.Controls)
+                ReleaseControlImages(child);
+
+            if (control.BackgroundImage == null)
+                return;
+
+            var image = control.BackgroundImage;
+            control.BackgroundImage = null;
+            image.Dispose();
+        }
+
+        private static void SetRedraw(Control control, bool enabled)
+        {
+            if (!control.IsHandleCreated)
+                return;
+
+            SendMessage(control.Handle, WmSetRedraw, enabled ? new IntPtr(1) : IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private void RenderTopLevelBlock(BlockInstance block)
+        {
+            var group = new BufferedPanel
+            {
+                Location = new Point(block.CanvasX, block.CanvasY),
+                AllowDrop = true,
+                BackColor = ClrCanvas,
+                Tag = new TopLevelBlockTag { Block = block }
+            };
+            group.DragEnter += Canvas_DragEnter;
+            group.DragOver += Canvas_DragEnter;
+            group.DragDrop += Canvas_DragDrop;
+
+            int bottom = RenderBlock(group, block, 0, 0);
+            var bounds = GetChildrenBounds(group);
+            group.Size = new Size(
+                Math.Max(CanvasMinimumBlockWidth, bounds.Right + 4),
+                Math.Max(84, Math.Max(bounds.Bottom + 4, bottom)));
+            _canvas.Controls.Add(group);
         }
 
         private void AddEmptyState()
         {
             var empty = new Panel
             {
-                Size = new Size(Math.Max(420, _canvas.ClientSize.Width - 72), 170),
+                Size = new Size(Math.Max(420, Unzoom(_canvasViewport.Width) - 72), 170),
                 Location = new Point(28, 28),
                 BackColor = Color.FromArgb(18, 28, 40)
             };
@@ -593,13 +1200,104 @@ namespace tmcreator
             _canvas.Controls.Add(empty);
         }
 
+        private void EnsureTopLevelBlockPositions()
+        {
+            int index = 0;
+            foreach (var block in _topBlocks)
+            {
+                if (block.CanvasX < 0 || block.CanvasY < 0)
+                {
+                    block.CanvasX = 32 + index % 3 * 48;
+                    block.CanvasY = 32 + index * 120;
+                }
+
+                index++;
+            }
+        }
+
+        private void PlaceNewTopLevelBlock(BlockInstance block)
+        {
+            int index = _topBlocks.Count;
+            block.CanvasX = 32 + index % 3 * 48;
+            block.CanvasY = 32 + index * 118;
+        }
+
+        private Point GetBlockDropOffset(BlockInstance block)
+        {
+            if (!_topBlocks.Contains(block) || block.CanvasX < 0 || block.CanvasY < 0)
+                return new Point(24, 18);
+
+            Point canvasPoint = _canvas.PointToClient(Control.MousePosition);
+            return new Point(
+                Math.Max(0, Unzoom(canvasPoint.X) - block.CanvasX),
+                Math.Max(0, Unzoom(canvasPoint.Y) - block.CanvasY));
+        }
+
+        private Point GetCanvasDropPoint(DragEventArgs e, Point offset)
+        {
+            Point canvasPoint = _canvas.PointToClient(new Point(e.X, e.Y));
+            int x = SnapToGrid(Unzoom(canvasPoint.X) - offset.X);
+            int y = SnapToGrid(Unzoom(canvasPoint.Y) - offset.Y);
+            return new Point(Math.Max(16, x), Math.Max(16, y));
+        }
+
+        private int GetBlockWidth(int indent)
+        {
+            int virtualViewportWidth = Math.Max(CanvasMinimumBlockWidth, Unzoom(_canvasViewport.Width));
+            return Math.Max(CanvasMinimumBlockWidth, Math.Min(CanvasDefaultBlockWidth, virtualViewportWidth - indent - 48));
+        }
+
+        private int Zoom(int value) => Math.Max(1, (int)Math.Round(value * _canvasZoom));
+
+        private int Unzoom(int value) => (int)Math.Round(value / _canvasZoom);
+
+        private static int SnapToGrid(int value)
+        {
+            return (int)Math.Round(value / (double)CanvasGridSize) * CanvasGridSize;
+        }
+
+        private void ScaleCanvasControls()
+        {
+            foreach (Control child in _canvas.Controls)
+            {
+                if (Math.Abs(_canvasZoom - 1f) >= 0.001f)
+                    child.Scale(new SizeF(_canvasZoom, _canvasZoom));
+                HookCanvasInteractions(child);
+            }
+        }
+
+        private void HookCanvasInteractions(Control control)
+        {
+            control.MouseWheel -= Canvas_MouseWheel;
+            control.MouseWheel += Canvas_MouseWheel;
+            control.MouseDown -= CanvasPan_MouseDown;
+            control.MouseMove -= CanvasPan_MouseMove;
+            control.MouseUp -= CanvasPan_MouseUp;
+            control.MouseDown += CanvasPan_MouseDown;
+            control.MouseMove += CanvasPan_MouseMove;
+            control.MouseUp += CanvasPan_MouseUp;
+            foreach (Control child in control.Controls)
+                HookCanvasInteractions(child);
+        }
+
+        private static Rectangle GetChildrenBounds(Control parent)
+        {
+            Rectangle bounds = Rectangle.Empty;
+            foreach (Control child in parent.Controls)
+            {
+                bounds = bounds.IsEmpty ? child.Bounds : Rectangle.Union(bounds, child.Bounds);
+            }
+
+            return bounds;
+        }
+
         private int RenderBlock(Panel parent, BlockInstance block, int y, int indent)
         {
             var definition = BlockRegistry.Get(block.BlockDefId);
             if (definition == null)
                 return RenderMissingBlock(parent, block, y, indent);
 
-            int width = Math.Max(420, parent.ClientSize.Width - indent - 48);
+            int width = GetBlockWidth(indent);
             int rowHeight = 34;
             int contentTop = 54;
             int blockHeight = contentTop + Math.Max(1, definition.Params.Count) * rowHeight + 16;
@@ -619,6 +1317,7 @@ namespace tmcreator
                 card.AllowDrop = true;
                 card.Tag = new BranchTag { Block = block, IsEventBody = true };
                 card.DragEnter += Branch_DragEnter;
+                card.DragOver += Branch_DragEnter;
                 card.DragDrop += Branch_DragDrop;
             }
 
@@ -634,6 +1333,7 @@ namespace tmcreator
                 header.AllowDrop = true;
                 header.Tag = new BranchTag { Block = block, IsEventBody = true };
                 header.DragEnter += Branch_DragEnter;
+                header.DragOver += Branch_DragEnter;
                 header.DragDrop += Branch_DragDrop;
             }
 
@@ -699,7 +1399,7 @@ namespace tmcreator
 
         private int RenderMissingBlock(Panel parent, BlockInstance block, int y, int indent)
         {
-            int width = Math.Max(420, parent.ClientSize.Width - indent - 48);
+            int width = GetBlockWidth(indent);
             var card = new Panel
             {
                 Location = new Point(indent, y),
@@ -727,6 +1427,7 @@ namespace tmcreator
         {
             int branchIndent = indent + 26;
             int width = Math.Max(380, ownerWidth - 26);
+            var branchTag = new BranchTag { Block = owner, IsEventBody = true };
 
             var header = new Panel
             {
@@ -734,19 +1435,20 @@ namespace tmcreator
                 Size = new Size(width, 40),
                 BackColor = Color.FromArgb(42, 42, 34),
                 AllowDrop = true,
-                Tag = new BranchTag { Block = owner, IsEventBody = true }
+                Tag = branchTag
             };
             header.Paint += (s, e) => DrawBranchHeader(e.Graphics, header.ClientRectangle, GetCategoryColor(BlockCategory.Event));
-            header.DragEnter += Branch_DragEnter;
-            header.DragDrop += Branch_DragDrop;
+            ApplyBranchDropTarget(header, branchTag);
 
             var branchLabel = CreateLabel("执行区: 把动作或条件拖到这里", new Point(18, 10), new Size(width - 170, 20), FontBodyBold, Color.FromArgb(255, 222, 120));
             var add = CreateLabel("+ 添加节点", new Point(width - 128, 8), new Size(104, 24), FontBodyBold, ClrText);
             add.TextAlign = ContentAlignment.MiddleCenter;
             add.Cursor = Cursors.Hand;
             add.BackColor = Color.FromArgb(38, GetCategoryColor(BlockCategory.Event));
-            add.Tag = new BranchTag { Block = owner, IsEventBody = true };
+            add.Tag = branchTag;
             add.Click += AddBranchNode_Click;
+            ApplyBranchDropTarget(branchLabel, branchTag);
+            ApplyBranchDropTarget(add, branchTag);
 
             header.Controls.Add(branchLabel);
             header.Controls.Add(add);
@@ -756,9 +1458,19 @@ namespace tmcreator
 
             if (owner.TrueBranch.Count == 0)
             {
-                var empty = CreateLabel("事件触发后还没有要执行的节点。", new Point(branchIndent + 18, y + 4), new Size(320, 20), FontSmall, ClrMuted);
-                parent.Controls.Add(empty);
-                y += 30;
+                var emptyZone = new Panel
+                {
+                    Location = new Point(branchIndent, y),
+                    Size = new Size(width, 30),
+                    BackColor = Color.Transparent
+                };
+                ApplyBranchDropTarget(emptyZone, branchTag);
+
+                var empty = CreateLabel("事件触发后还没有要执行的节点。", new Point(18, 4), new Size(width - 36, 20), FontSmall, ClrMuted);
+                ApplyBranchDropTarget(empty, branchTag);
+                emptyZone.Controls.Add(empty);
+                parent.Controls.Add(emptyZone);
+                y += emptyZone.Height;
             }
             else
             {
@@ -777,6 +1489,7 @@ namespace tmcreator
             var branchColor = isTrue ? ClrSuccess : ClrDanger;
             int branchIndent = indent + 26;
             int width = Math.Max(380, ownerWidth - 26);
+            var branchTag = new BranchTag { Block = owner, IsTrue = isTrue };
 
             var header = new Panel
             {
@@ -784,19 +1497,20 @@ namespace tmcreator
                 Size = new Size(width, 38),
                 BackColor = isTrue ? Color.FromArgb(26, 58, 43) : Color.FromArgb(60, 35, 42),
                 AllowDrop = true,
-                Tag = new BranchTag { Block = owner, IsTrue = isTrue }
+                Tag = branchTag
             };
             header.Paint += (s, e) => DrawBranchHeader(e.Graphics, header.ClientRectangle, branchColor);
-            header.DragEnter += Branch_DragEnter;
-            header.DragDrop += Branch_DragDrop;
+            ApplyBranchDropTarget(header, branchTag);
 
             var branchLabel = CreateLabel(isTrue ? $"是: {label}" : $"否: {label}", new Point(18, 9), new Size(width - 160, 20), FontBodyBold, isTrue ? Color.FromArgb(132, 235, 165) : Color.FromArgb(255, 139, 149));
             var add = CreateLabel("+ 添加节点", new Point(width - 128, 7), new Size(104, 24), FontBodyBold, ClrText);
             add.TextAlign = ContentAlignment.MiddleCenter;
             add.Cursor = Cursors.Hand;
             add.BackColor = Color.FromArgb(38, branchColor);
-            add.Tag = new BranchTag { Block = owner, IsTrue = isTrue };
+            add.Tag = branchTag;
             add.Click += AddBranchNode_Click;
+            ApplyBranchDropTarget(branchLabel, branchTag);
+            ApplyBranchDropTarget(add, branchTag);
 
             header.Controls.Add(branchLabel);
             header.Controls.Add(add);
@@ -806,9 +1520,19 @@ namespace tmcreator
 
             if (children.Count == 0)
             {
-                var empty = CreateLabel("这个分支还没有节点。", new Point(branchIndent + 18, y + 4), new Size(220, 20), FontSmall, ClrMuted);
-                parent.Controls.Add(empty);
-                y += 30;
+                var emptyZone = new Panel
+                {
+                    Location = new Point(branchIndent, y),
+                    Size = new Size(width, 30),
+                    BackColor = Color.Transparent
+                };
+                ApplyBranchDropTarget(emptyZone, branchTag);
+
+                var empty = CreateLabel("这个分支还没有节点。", new Point(18, 4), new Size(width - 36, 20), FontSmall, ClrMuted);
+                ApplyBranchDropTarget(empty, branchTag);
+                emptyZone.Controls.Add(empty);
+                parent.Controls.Add(emptyZone);
+                y += emptyZone.Height;
             }
             else
             {
@@ -819,6 +1543,18 @@ namespace tmcreator
             }
 
             return y + 4;
+        }
+
+        private void ApplyBranchDropTarget(Control control, BranchTag tag)
+        {
+            control.AllowDrop = true;
+            control.Tag = tag;
+            control.DragEnter -= Branch_DragEnter;
+            control.DragOver -= Branch_DragEnter;
+            control.DragDrop -= Branch_DragDrop;
+            control.DragEnter += Branch_DragEnter;
+            control.DragOver += Branch_DragEnter;
+            control.DragDrop += Branch_DragDrop;
         }
 
         private void AddParameterControl(Control parent, BlockInstance block, BlockParam param, int y, int width)
@@ -888,6 +1624,16 @@ namespace tmcreator
                 return;
             }
 
+            if (param.Type == ParamType.Projectile)
+            {
+                var projectileText = CreateProjectileTextBox(inputX, y, inputWidth);
+                projectileText.Text = block.ParamValues.GetValueOrDefault(param.Name, param.DefaultValue);
+                projectileText.Tag = new ParamTag { Block = block, ParamName = param.Name };
+                projectileText.TextChanged += ParamProjectile_Changed;
+                parent.Controls.Add(projectileText);
+                return;
+            }
+
             var text = CreateTextBox(inputX, y, param.Type == ParamType.Text ? Math.Min(420, width - inputX - 24) : inputWidth);
             text.Text = block.ParamValues.GetValueOrDefault(param.Name, param.DefaultValue);
             text.Tag = new ParamTag { Block = block, ParamName = param.Name };
@@ -907,6 +1653,7 @@ namespace tmcreator
             };
             slot.Paint += ValueSlot_Paint;
             slot.DragEnter += ValueSlot_DragEnter;
+            slot.DragOver += ValueSlot_DragEnter;
             slot.DragDrop += ValueSlot_DragDrop;
 
             if (owner.ParamBlocks.TryGetValue(param.Name, out var nestedBlock))
@@ -921,6 +1668,7 @@ namespace tmcreator
                 text.TextChanged += ParamText_Changed;
                 text.AllowDrop = true;
                 text.DragEnter += ValueSlot_DragEnter;
+                text.DragOver += ValueSlot_DragEnter;
                 text.DragDrop += ValueSlot_DragDrop;
                 slot.Controls.Add(text);
 
@@ -929,6 +1677,7 @@ namespace tmcreator
                 hint.AllowDrop = true;
                 hint.Tag = slot.Tag;
                 hint.DragEnter += ValueSlot_DragEnter;
+                hint.DragOver += ValueSlot_DragEnter;
                 hint.DragDrop += ValueSlot_DragDrop;
                 slot.Controls.Add(hint);
             }
@@ -963,9 +1712,10 @@ namespace tmcreator
             label.Cursor = Cursors.SizeAll;
             RegisterExistingBlockDrag(label, nestedBlock);
 
-            if (definition?.Params.Count > 0 && definition.Id != "value_math" && chip.Width > 300)
+            var inlineParam = GetInlineNestedEditorParam(definition, chip.Width);
+            if (inlineParam != null)
             {
-                AddInlineNestedEditor(chip, nestedBlock, definition.Params[0], 154, chip.Width - 224);
+                AddInlineNestedEditor(chip, nestedBlock, inlineParam, 154, chip.Width - 224);
             }
 
             var remove = CreateLabel("移除", new Point(chip.Width - 56, 4), new Size(42, 18), FontSmall, ClrDanger);
@@ -980,6 +1730,16 @@ namespace tmcreator
             chip.Controls.Add(label);
             chip.Controls.Add(remove);
             slot.Controls.Add(chip);
+        }
+
+        private static BlockParam? GetInlineNestedEditorParam(BlockDefinition? definition, int chipWidth)
+        {
+            if (definition == null || definition.Params.Count == 0 || chipWidth <= 300)
+                return null;
+
+            return definition.Id is "value_math" or "value_variable"
+                ? null
+                : definition.Params[0];
         }
 
         private static string BuildValuePreview(BlockInstance block)
@@ -1057,27 +1817,10 @@ namespace tmcreator
 
         private void ValueSlot_DragDrop(object? sender, DragEventArgs e)
         {
-            var slotTag = FindParamSlotTag(sender as Control);
             var drag = GetDragData(e);
-            if (slotTag == null || drag == null || !CanDropIntoParamSlot(drag, slotTag))
+            if (drag == null || !TryAttachDragDataToTarget(drag, sender as Control))
                 return;
 
-            BlockInstance nested;
-            if (drag.ExistingBlock != null)
-            {
-                RemoveBlock(drag.ExistingBlock);
-                nested = drag.ExistingBlock;
-            }
-            else if (drag.Definition != null)
-            {
-                nested = CreateBlockInstance(drag.Definition);
-            }
-            else
-            {
-                return;
-            }
-
-            slotTag.Owner.ParamBlocks[slotTag.Param.Name] = nested;
             RebuildCanvas();
         }
 
@@ -1086,6 +1829,19 @@ namespace tmcreator
             while (control != null)
             {
                 if (control.Tag is ParamSlotTag tag)
+                    return tag;
+
+                control = control.Parent;
+            }
+
+            return null;
+        }
+
+        private static BranchTag? FindBranchTag(Control? control)
+        {
+            while (control != null)
+            {
+                if (control.Tag is BranchTag tag)
                     return tag;
 
                 control = control.Parent;
@@ -1127,7 +1883,7 @@ namespace tmcreator
         private void Branch_DragEnter(object? sender, DragEventArgs e)
         {
             var drag = GetDragData(e);
-            var branch = (sender as Control)?.Tag as BranchTag;
+            var branch = FindBranchTag(sender as Control);
             if (drag == null || branch == null || !CanDropIntoBranch(drag, branch))
             {
                 e.Effect = DragDropEffects.None;
@@ -1140,20 +1896,8 @@ namespace tmcreator
         private void Branch_DragDrop(object? sender, DragEventArgs e)
         {
             var drag = GetDragData(e);
-            var branch = (sender as Control)?.Tag as BranchTag;
-            if (drag == null || branch == null || !CanDropIntoBranch(drag, branch))
+            if (drag == null || !TryAttachDragDataToTarget(drag, sender as Control))
                 return;
-
-            var targetList = GetBranchList(branch);
-            if (drag.ExistingBlock != null)
-            {
-                RemoveBlock(drag.ExistingBlock);
-                targetList.Add(drag.ExistingBlock);
-            }
-            else if (drag.Definition != null)
-            {
-                targetList.Add(CreateBlockInstance(drag.Definition));
-            }
 
             RebuildCanvas();
         }
@@ -1276,6 +2020,14 @@ namespace tmcreator
             tag.Block.ParamValues[tag.ParamName] = textBox.Text;
         }
 
+        private void ParamProjectile_Changed(object? sender, EventArgs e)
+        {
+            if (sender is not System.Windows.Forms.TextBox textBox || textBox.Tag is not ParamTag tag)
+                return;
+
+            tag.Block.ParamValues[tag.ParamName] = textBox.Text.Trim();
+        }
+
         private static bool IsPartialNumber(string text)
         {
             return string.IsNullOrWhiteSpace(text) ||
@@ -1289,6 +2041,8 @@ namespace tmcreator
             {
                 Id = source.Id,
                 BlockDefId = source.BlockDefId,
+                CanvasX = source.CanvasX,
+                CanvasY = source.CanvasY,
                 ParamValues = new Dictionary<string, string>(source.ParamValues),
                 ParamBlocks = source.ParamBlocks.ToDictionary(pair => pair.Key, pair => CloneBlock(pair.Value)),
                 TrueBranch = source.TrueBranch.Select(CloneBlock).ToList(),
@@ -1301,7 +2055,7 @@ namespace tmcreator
             int total = CountBlocks(_topBlocks);
             int events = CountBlocks(_topBlocks, BlockCategory.Event);
             int conditions = CountBlocks(_topBlocks, BlockCategory.Condition);
-            _summaryLabel.Text = $"{total} 个节点 / {events} 个事件 / {conditions} 个条件";
+            _summaryLabel.Text = $"{total} 个节点 / {events} 个事件 / {conditions} 个条件 / 缩放 {Math.Round(_canvasZoom * 100)}%";
         }
 
         private static int CountBlocks(IEnumerable<BlockInstance> blocks, BlockCategory? category = null)
@@ -1355,6 +2109,26 @@ namespace tmcreator
                 ForeColor = ClrText,
                 BackColor = ClrInput
             };
+        }
+
+        private System.Windows.Forms.TextBox CreateProjectileTextBox(int x, int y, int width)
+        {
+            var textBox = new System.Windows.Forms.TextBox
+            {
+                Location = new Point(x, y),
+                Size = new Size(width, 26),
+                Font = FontBody,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.CustomSource,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = ClrInput,
+                ForeColor = ClrText
+            };
+
+            var autoComplete = new AutoCompleteStringCollection();
+            autoComplete.AddRange(_projectileReferences.ToArray());
+            textBox.AutoCompleteCustomSource = autoComplete;
+            return textBox;
         }
 
         private static UITextBox CreateTextBox(int x, int y, int width)
@@ -1462,11 +2236,17 @@ namespace tmcreator
             e.Graphics.DrawRectangle(border, 0, 0, panel.Width - 1, panel.Height - 1);
         }
 
-        private static void Canvas_Paint(object? sender, PaintEventArgs e)
+        private void Canvas_Paint(object? sender, PaintEventArgs e)
         {
             if (sender is not Panel panel) return;
 
             e.Graphics.Clear(ClrCanvas);
+            int grid = Math.Max(10, Zoom(CanvasGridSize));
+            using var gridPen = new Pen(Color.FromArgb(22, ClrBorder));
+            for (int x = 0; x < panel.Width; x += grid)
+                e.Graphics.DrawLine(gridPen, x, 0, x, panel.Height);
+            for (int y = 0; y < panel.Height; y += grid)
+                e.Graphics.DrawLine(gridPen, 0, y, panel.Width, y);
             using var border = new Pen(ClrSoftBorder);
             e.Graphics.DrawRectangle(border, 0, 0, panel.Width - 1, panel.Height - 1);
         }
@@ -1554,6 +2334,23 @@ namespace tmcreator
         {
             public BlockDefinition? Definition { get; set; }
             public BlockInstance? ExistingBlock { get; set; }
+            public Point DropOffset { get; set; } = new(24, 18);
+        }
+
+        private sealed class TopLevelBlockTag
+        {
+            public BlockInstance Block { get; set; } = null!;
+        }
+
+        private sealed class TopLevelDragState
+        {
+            public BlockInstance Block { get; set; } = null!;
+            public Control Source { get; set; } = null!;
+            public Control Container { get; set; } = null!;
+            public Point Offset { get; set; }
+            public Point OriginalLocation { get; set; }
+            public bool Started { get; set; }
+            public bool IsDetachedPreview { get; set; }
         }
 
         private class BranchMenuTag
@@ -1568,6 +2365,13 @@ namespace tmcreator
             {
                 DoubleBuffered = true;
                 ResizeRedraw = true;
+                SetStyle(
+                    ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.OptimizedDoubleBuffer |
+                    ControlStyles.ResizeRedraw |
+                    ControlStyles.UserPaint,
+                    true);
+                UpdateStyles();
             }
         }
 

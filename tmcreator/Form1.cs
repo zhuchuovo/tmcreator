@@ -34,7 +34,7 @@ namespace tmcreator
         private readonly UICheckBox chkUsesProjectile = new();
         private readonly UICheckBox chkConsumeOnUse = new();
         private readonly UICheckBox chkMultiFrameTexture = new();
-        private readonly NumericUpDown numProjectileId = new();
+        private readonly System.Windows.Forms.TextBox txtProjectileId = new();
         private readonly NumericUpDown numProjectileSpeed = new();
         private readonly NumericUpDown numVanillaBuffIconId = new();
         private readonly NumericUpDown numUseStyleId = new();
@@ -61,6 +61,11 @@ namespace tmcreator
         private readonly UIButton btnRenameProject = new();
         private RecipeData _currentRecipe = new();
         private string _projectName = "未命名工程";
+        private string _projectDescription = string.Empty;
+        private string _projectIconPath = string.Empty;
+        private string _buildVersion = "0.1.0";
+        private string _buildAuthor = string.Empty;
+        private string _buildHomepage = string.Empty;
         private string? _projectFilePath;
 
         private static readonly JsonSerializerOptions ProjectJsonOptions = new()
@@ -203,7 +208,7 @@ namespace tmcreator
             ConfigureHeaderButton(btnNewProject, "创建文件", NewProject_Click);
             ConfigureHeaderButton(btnOpenProject, "打开工程", OpenProject_Click);
             ConfigureHeaderButton(btnSaveProject, "保存工程", SaveProject_Click);
-            ConfigureHeaderButton(btnRenameProject, "修改名称", RenameProject_Click);
+            ConfigureHeaderButton(btnRenameProject, "修改项目", RenameProject_Click);
 
             _projectToolbar.Controls.Add(btnNewProject);
             _projectToolbar.Controls.Add(btnOpenProject);
@@ -453,11 +458,14 @@ namespace tmcreator
             chkConsumeOnUse.BackColor = Color.Transparent;
             _combatSection.Controls.Add(chkConsumeOnUse);
 
-            AddNumericField(_combatSection, "弹幕ID", numProjectileId, 18, 206, 72);
+            AddFieldLabel(_combatSection, "弹幕ID", 18, 206, 72);
+            txtProjectileId.Location = new Point(96, 202);
+            txtProjectileId.Size = new Size(92, 26);
+            txtProjectileId.Font = FontBody;
+            ConfigureProjectileReferenceTextBox(txtProjectileId);
+            _combatSection.Controls.Add(txtProjectileId);
             AddNumericField(_combatSection, "速度", numProjectileSpeed, 196, 206, 72);
-            numProjectileId.Minimum = 0;
-            numProjectileId.Maximum = 9999;
-            numProjectileId.Value = 1;
+            txtProjectileId.Text = "1";
             numProjectileSpeed.DecimalPlaces = 1;
             numProjectileSpeed.Increment = 0.5M;
             numProjectileSpeed.Maximum = 99;
@@ -823,6 +831,81 @@ namespace tmcreator
             comboBox.BackColor = ClrInputBg;
         }
 
+        private void ConfigureProjectileReferenceTextBox(System.Windows.Forms.TextBox textBox)
+        {
+            textBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            textBox.AutoCompleteSource = AutoCompleteSource.CustomSource;
+            textBox.BorderStyle = BorderStyle.FixedSingle;
+            textBox.BackColor = ClrInputBg;
+            textBox.ForeColor = ClrText;
+            UpdateProjectileReferenceOptions();
+        }
+
+        private void UpdateProjectileReferenceOptions()
+        {
+            var references = _items
+                .Where(item => item.Type == ItemType.Projectile)
+                .Select(item => item.Name.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            string current = txtProjectileId.Text;
+
+            var autoComplete = new AutoCompleteStringCollection();
+            autoComplete.AddRange(references);
+            txtProjectileId.AutoCompleteCustomSource = autoComplete;
+            txtProjectileId.Text = current;
+        }
+
+        private string GetProjectileReferenceInput()
+        {
+            return NormalizeProjectileReference(txtProjectileId.Text, GetProjectileIdFallback(txtProjectileId.Text));
+        }
+
+        private static int GetProjectileIdFallback(string? reference)
+        {
+            if (int.TryParse(reference, out int intValue))
+                return Math.Max(0, intValue);
+
+            if (double.TryParse(reference, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
+                return Math.Max(0, (int)Math.Round(doubleValue));
+
+            return 1;
+        }
+
+        private static string NormalizeProjectileReference(string? reference, int projectileId)
+        {
+            string trimmed = reference?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return Math.Max(0, projectileId).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (trimmed == "1" && projectileId != 1)
+                return Math.Max(0, projectileId).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            return trimmed;
+        }
+
+        private bool IsDuplicateInternalName(string name, ModItemData? allowedItem = null)
+        {
+            return _items.Any(item =>
+                !ReferenceEquals(item, allowedItem) &&
+                string.Equals(item.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool TryGetDuplicateInternalName(out string duplicateName)
+        {
+            duplicateName = _items
+                .Select(item => item.Name.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1)
+                ?.Key ?? string.Empty;
+
+            return !string.IsNullOrWhiteSpace(duplicateName);
+        }
+
         private static void StyleButton(UIButton button, Color fill, Color border)
         {
             button.Style = UIStyle.Black;
@@ -1029,7 +1112,8 @@ namespace tmcreator
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = (int)numCriticalChance.Value,
                 UsesProjectile = chkUsesProjectile.Checked,
-                ProjectileId = (int)numProjectileId.Value,
+                ProjectileId = GetProjectileIdFallback(txtProjectileId.Text),
+                ProjectileReference = GetProjectileReferenceInput(),
                 ProjectileSpeed = numProjectileSpeed.Value,
                 ConsumeOnUse = chkConsumeOnUse.Checked,
                 PickaxePower = (int)numPickaxePower.Value,
@@ -1071,6 +1155,12 @@ namespace tmcreator
             }
 
             var editingItem = _editingItem;
+            if (IsDuplicateInternalName(txtName.Text.Trim(), editingItem))
+            {
+                UIMessageBox.Show("内部名称不能重名，请换一个唯一的内部名称。");
+                return;
+            }
+
             var item = CaptureItemFromForm(editingItem?.Flow);
 
             if (editingItem != null)
@@ -1081,6 +1171,7 @@ namespace tmcreator
                     _items[index] = item;
                     ClearInputs();
                     RefreshItemCards();
+                    UpdateProjectileReferenceOptions();
                     return;
                 }
 
@@ -1089,6 +1180,7 @@ namespace tmcreator
 
             _items.Add(item);
             AddItemCardModern(item);
+            UpdateProjectileReferenceOptions();
             ClearInputs();
             UpdateEmptyState();
         }
@@ -1225,7 +1317,7 @@ namespace tmcreator
             StyleButton(flowBtn, Color.FromArgb(54, 161, 124), Color.FromArgb(38, 112, 87));
             flowBtn.Click += (s, e) =>
             {
-                using var form = new VisualScriptForm(item);
+                using var form = new VisualScriptForm(item, _items);
                 form.ShowDialog();
             };
             card.Controls.Add(flowBtn);
@@ -1249,6 +1341,7 @@ namespace tmcreator
                 DisposeCardImages(card);
                 flowItems.Controls.Remove(card);
                 card.Dispose();
+                UpdateProjectileReferenceOptions();
                 UpdateEmptyState();
             };
             card.Controls.Add(deleteBtn);
@@ -1279,7 +1372,7 @@ namespace tmcreator
             SetNumericValue(numKnockback, item.Knockback);
             SetNumericValue(numCriticalChance, item.CriticalChance);
             chkConsumeOnUse.Checked = item.ConsumeOnUse;
-            SetNumericValue(numProjectileId, item.ProjectileId);
+            txtProjectileId.Text = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             SetNumericValue(numProjectileSpeed, item.ProjectileSpeed);
             SetNumericValue(numPickaxePower, item.PickaxePower);
             SetNumericValue(numAxePower, item.AxePower);
@@ -1331,147 +1424,347 @@ namespace tmcreator
 
         private void ExportModern_Click(object? sender, EventArgs e)
         {
+            if (!ValidateModernExportReady())
+                return;
+
+            using var dialog = CreateExportFolderDialog("选择导出目录 (可选 ModSources 或已有 Mod 文件夹)");
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                string modDir = ResolveExportModDirectory(dialog.SelectedPath);
+                UIMessageBox.Show(ExportModernToDirectory(modDir));
+            }
+            catch (Exception ex)
+            {
+                UIMessageBox.Show($"导出失败: {ex.Message}");
+            }
+        }
+
+        private bool ValidateModernExportReady()
+        {
             if (_items.Count == 0)
             {
                 UIMessageBox.Show("没有可导出的物品。");
-                return;
+                return false;
             }
 
-            using var dialog = new FolderBrowserDialog
+            if (TryGetDuplicateInternalName(out string duplicateName))
             {
-                Description = "选择导出目录 (tModLoader Mod 源码文件夹)"
+                UIMessageBox.Show($"内部名称不能重名：{duplicateName}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private static FolderBrowserDialog CreateExportFolderDialog(string description)
+        {
+            return new FolderBrowserDialog
+            {
+                Description = description
             };
+        }
 
-            if (dialog.ShowDialog() != DialogResult.OK)
-                return;
+        private string ResolveExportModDirectory(string selectedDir)
+        {
+            string projectCodeName = GetProjectCodeName();
+            string selectedName = Path.GetFileName(selectedDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            bool selectedIsExistingMod = string.Equals(selectedName, projectCodeName, StringComparison.OrdinalIgnoreCase) ||
+                                         File.Exists(Path.Combine(selectedDir, "build.txt")) ||
+                                         Directory.GetFiles(selectedDir, "*.csproj", SearchOption.TopDirectoryOnly).Length > 0 ||
+                                         File.Exists(Path.Combine(selectedDir, $"{projectCodeName}.cs")) ||
+                                         Directory.Exists(Path.Combine(selectedDir, "Items")) ||
+                                         Directory.Exists(Path.Combine(selectedDir, "Localization"));
 
-            string baseDir = dialog.SelectedPath;
+            return selectedIsExistingMod
+                ? selectedDir
+                : Path.Combine(selectedDir, projectCodeName);
+        }
+
+        private string ExportModernToDirectory(string baseDir)
+        {
+            Directory.CreateDirectory(baseDir);
+
+            string projectCodeName = GetProjectCodeName();
             string itemsDir = Path.Combine(baseDir, "Items");
             string buffsDir = Path.Combine(baseDir, "Buffs");
             string projectilesDir = Path.Combine(baseDir, "Projectiles");
             string locDir = Path.Combine(baseDir, "Localization");
             string locFile = Path.Combine(locDir, "en-US.hjson");
 
-            try
+            Directory.CreateDirectory(itemsDir);
+            Directory.CreateDirectory(buffsDir);
+            Directory.CreateDirectory(projectilesDir);
+            Directory.CreateDirectory(locDir);
+
+            var sbItems = new System.Text.StringBuilder();
+            var sbBuffs = new System.Text.StringBuilder();
+            var sbProjectiles = new System.Text.StringBuilder();
+            var sbLoc = new System.Text.StringBuilder();
+            var itemEntries = _items.Where(item => item.Type != ItemType.Buff && item.Type != ItemType.Projectile).ToList();
+            var buffEntries = _items.Where(item => item.Type == ItemType.Buff).ToList();
+            var projectileEntries = _items.Where(item => item.Type == ItemType.Projectile).ToList();
+
+            WriteProjectModFiles(baseDir, projectCodeName, sbItems);
+
+            if (_items.Any(HasFlowScript))
             {
-                Directory.CreateDirectory(itemsDir);
-                Directory.CreateDirectory(buffsDir);
-                Directory.CreateDirectory(projectilesDir);
-                Directory.CreateDirectory(locDir);
-
-                var sbItems = new System.Text.StringBuilder();
-                var sbBuffs = new System.Text.StringBuilder();
-                var sbProjectiles = new System.Text.StringBuilder();
-                var sbLoc = new System.Text.StringBuilder();
-                string projectCodeName = GetProjectCodeName();
-                var itemEntries = _items.Where(item => item.Type != ItemType.Buff && item.Type != ItemType.Projectile).ToList();
-                var buffEntries = _items.Where(item => item.Type == ItemType.Buff).ToList();
-                var projectileEntries = _items.Where(item => item.Type == ItemType.Projectile).ToList();
-
-                sbLoc.AppendLine("Mods: {");
-                sbLoc.AppendLine($"  {projectCodeName}: {{");
-
-                if (itemEntries.Count > 0)
-                {
-                    sbLoc.AppendLine("    Items: {");
-                    foreach (var item in itemEntries)
-                    {
-                        string className = SanitizeClassName(item.Name);
-                        string csFile = Path.Combine(itemsDir, $"{className}.cs");
-                        string code = GenerateItemCode(item, className);
-
-                        File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
-
-                        if (!string.IsNullOrEmpty(item.TexturePath) && File.Exists(item.TexturePath))
-                        {
-                            string texFile = Path.Combine(itemsDir, $"{className}.png");
-                            File.Copy(item.TexturePath, texFile, true);
-                            sbItems.AppendLine($"  - 导出物品: {className}.cs + {className}.png");
-                        }
-                        else
-                        {
-                            sbItems.AppendLine($"  - 导出物品: {className}.cs");
-                        }
-
-                        sbLoc.AppendLine($"      {className}.DisplayName: {item.DisplayName}");
-                        if (!string.IsNullOrEmpty(item.Description))
-                            sbLoc.AppendLine($"      {className}.Tooltip: {item.Description}");
-                    }
-                    sbLoc.AppendLine("    }");
-                }
-
-                if (buffEntries.Count > 0)
-                {
-                    sbLoc.AppendLine("    Buffs: {");
-                    foreach (var buff in buffEntries)
-                    {
-                        string className = SanitizeClassName(buff.Name);
-                        string csFile = Path.Combine(buffsDir, $"{className}.cs");
-                        string code = GenerateBuffCode(buff, className);
-
-                        File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
-
-                        if (buff.BuffIconSource == BuffIconSource.Custom && !string.IsNullOrEmpty(buff.TexturePath) && File.Exists(buff.TexturePath))
-                        {
-                            string texFile = Path.Combine(buffsDir, $"{className}.png");
-                            File.Copy(buff.TexturePath, texFile, true);
-                            sbBuffs.AppendLine($"  - 导出 Buff: {className}.cs + {className}.png");
-                        }
-                        else
-                        {
-                            sbBuffs.AppendLine(buff.BuffIconSource == BuffIconSource.Vanilla
-                                ? $"  - 导出 Buff: {className}.cs (原版图标 {buff.VanillaBuffIconId})"
-                                : $"  - 导出 Buff: {className}.cs");
-                        }
-
-                        sbLoc.AppendLine($"      {className}.DisplayName: {buff.DisplayName}");
-                        if (!string.IsNullOrEmpty(buff.Description))
-                            sbLoc.AppendLine($"      {className}.Description: {buff.Description}");
-                    }
-                    sbLoc.AppendLine("    }");
-                }
-
-                if (projectileEntries.Count > 0)
-                {
-                    sbLoc.AppendLine("    Projectiles: {");
-                    foreach (var projectile in projectileEntries)
-                    {
-                        string className = SanitizeClassName(projectile.Name);
-                        string csFile = Path.Combine(projectilesDir, $"{className}.cs");
-                        string code = GenerateProjectileCode(projectile, className);
-
-                        File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
-
-                        if (!string.IsNullOrEmpty(projectile.TexturePath) && File.Exists(projectile.TexturePath))
-                        {
-                            string texFile = Path.Combine(projectilesDir, $"{className}.png");
-                            File.Copy(projectile.TexturePath, texFile, true);
-                            sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs + {className}.png");
-                        }
-                        else
-                        {
-                            sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs");
-                        }
-
-                        sbLoc.AppendLine($"      {className}.DisplayName: {projectile.DisplayName}");
-                        if (!string.IsNullOrEmpty(projectile.Description))
-                            sbLoc.AppendLine($"      {className}.Description: {projectile.Description}");
-                    }
-                    sbLoc.AppendLine("    }");
-                }
-
-                sbLoc.AppendLine("  }");
-                sbLoc.AppendLine("}");
-
-                File.WriteAllText(locFile, sbLoc.ToString(), System.Text.Encoding.UTF8);
-
-                string msg = $"成功导出 {_items.Count} 个内容到:\n{baseDir}\n\n生成内容:\n{sbItems}{sbBuffs}{sbProjectiles}";
-                UIMessageBox.Show(msg);
+                string flowVariablesFile = Path.Combine(baseDir, "TMCreatorFlowVariables.cs");
+                File.WriteAllText(flowVariablesFile, GenerateFlowVariablesCode(projectCodeName), System.Text.Encoding.UTF8);
+                sbItems.AppendLine("  - 导出全局流程变量: TMCreatorFlowVariables.cs");
             }
-            catch (Exception ex)
+
+            sbLoc.AppendLine("Mods: {");
+            sbLoc.AppendLine($"  {projectCodeName}: {{");
+
+            if (itemEntries.Count > 0)
             {
-                UIMessageBox.Show($"导出失败: {ex.Message}");
+                sbLoc.AppendLine("    Items: {");
+                foreach (var item in itemEntries)
+                {
+                    string className = SanitizeClassName(item.Name);
+                    string csFile = Path.Combine(itemsDir, $"{className}.cs");
+                    string code = GenerateItemCode(item, className);
+
+                    File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
+
+                    if (!string.IsNullOrEmpty(item.TexturePath) && File.Exists(item.TexturePath))
+                    {
+                        string texFile = Path.Combine(itemsDir, $"{className}.png");
+                        File.Copy(item.TexturePath, texFile, true);
+                        sbItems.AppendLine($"  - 导出物品: {className}.cs + {className}.png");
+                    }
+                    else
+                    {
+                        sbItems.AppendLine($"  - 导出物品: {className}.cs");
+                    }
+
+                    sbLoc.AppendLine($"      {className}.DisplayName: {item.DisplayName}");
+                    if (!string.IsNullOrEmpty(item.Description))
+                        sbLoc.AppendLine($"      {className}.Tooltip: {item.Description}");
+                }
+                sbLoc.AppendLine("    }");
             }
+
+            if (buffEntries.Count > 0)
+            {
+                sbLoc.AppendLine("    Buffs: {");
+                foreach (var buff in buffEntries)
+                {
+                    string className = SanitizeClassName(buff.Name);
+                    string csFile = Path.Combine(buffsDir, $"{className}.cs");
+                    string code = GenerateBuffCode(buff, className);
+
+                    File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
+
+                    if (buff.BuffIconSource == BuffIconSource.Custom && !string.IsNullOrEmpty(buff.TexturePath) && File.Exists(buff.TexturePath))
+                    {
+                        string texFile = Path.Combine(buffsDir, $"{className}.png");
+                        File.Copy(buff.TexturePath, texFile, true);
+                        sbBuffs.AppendLine($"  - 导出 Buff: {className}.cs + {className}.png");
+                    }
+                    else
+                    {
+                        sbBuffs.AppendLine(buff.BuffIconSource == BuffIconSource.Vanilla
+                            ? $"  - 导出 Buff: {className}.cs (原版图标 {buff.VanillaBuffIconId})"
+                            : $"  - 导出 Buff: {className}.cs");
+                    }
+
+                    sbLoc.AppendLine($"      {className}.DisplayName: {buff.DisplayName}");
+                    if (!string.IsNullOrEmpty(buff.Description))
+                        sbLoc.AppendLine($"      {className}.Description: {buff.Description}");
+                }
+                sbLoc.AppendLine("    }");
+            }
+
+            if (projectileEntries.Count > 0)
+            {
+                sbLoc.AppendLine("    Projectiles: {");
+                foreach (var projectile in projectileEntries)
+                {
+                    string className = SanitizeClassName(projectile.Name);
+                    string csFile = Path.Combine(projectilesDir, $"{className}.cs");
+                    string code = GenerateProjectileCode(projectile, className);
+
+                    File.WriteAllText(csFile, code, System.Text.Encoding.UTF8);
+
+                    if (!string.IsNullOrEmpty(projectile.TexturePath) && File.Exists(projectile.TexturePath))
+                    {
+                        string texFile = Path.Combine(projectilesDir, $"{className}.png");
+                        File.Copy(projectile.TexturePath, texFile, true);
+                        sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs + {className}.png");
+                    }
+                    else
+                    {
+                        sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs");
+                    }
+
+                    sbLoc.AppendLine($"      {className}.DisplayName: {projectile.DisplayName}");
+                    if (!string.IsNullOrEmpty(projectile.Description))
+                        sbLoc.AppendLine($"      {className}.Description: {projectile.Description}");
+                }
+                sbLoc.AppendLine("    }");
+            }
+
+            sbLoc.AppendLine("  }");
+            sbLoc.AppendLine("}");
+
+            File.WriteAllText(locFile, sbLoc.ToString(), System.Text.Encoding.UTF8);
+
+            return $"成功导出 {_items.Count} 个内容到:\n{baseDir}\n\n生成内容:\n{sbItems}{sbBuffs}{sbProjectiles}";
+        }
+
+        private void WriteProjectModFiles(string baseDir, string projectCodeName, System.Text.StringBuilder summary)
+        {
+            string modClassFile = Path.Combine(baseDir, $"{projectCodeName}.cs");
+            File.WriteAllText(modClassFile, GenerateModClassCode(projectCodeName), System.Text.Encoding.UTF8);
+            summary.AppendLine($"  - 导出模组主类: {projectCodeName}.cs");
+
+            string projectFile = Path.Combine(baseDir, $"{projectCodeName}.csproj");
+            File.WriteAllText(projectFile, GenerateModProjectFile(), System.Text.Encoding.UTF8);
+            summary.AppendLine($"  - 导出工程文件: {projectCodeName}.csproj");
+
+            WriteProjectDescriptionFiles(baseDir, summary);
+            WriteProjectBuildFile(baseDir, summary);
+            WriteProjectIconFiles(baseDir, projectCodeName, summary);
+        }
+
+        private static string GenerateModClassCode(string projectCodeName)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("using Terraria.ModLoader;");
+            sb.AppendLine();
+            sb.AppendLine($"namespace {projectCodeName}");
+            sb.AppendLine("{");
+            sb.AppendLine($"    public class {projectCodeName} : Mod");
+            sb.AppendLine("    {");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
+        private static string GenerateModProjectFile()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("<Project Sdk=\"Microsoft.NET.Sdk\">");
+            sb.AppendLine();
+            sb.AppendLine("  <Import Project=\"..\\tModLoader.targets\" />");
+            sb.AppendLine();
+            sb.AppendLine("  <PropertyGroup>");
+            sb.AppendLine("  </PropertyGroup>");
+            sb.AppendLine();
+            sb.AppendLine("  <ItemGroup>");
+            sb.AppendLine("  </ItemGroup>");
+            sb.AppendLine();
+            sb.AppendLine("</Project>");
+            return sb.ToString();
+        }
+
+        private void WriteProjectDescriptionFiles(string baseDir, System.Text.StringBuilder summary)
+        {
+            string description = string.IsNullOrWhiteSpace(_projectDescription)
+                ? $"由 TMCreator 导出的 {_projectName} 模组。"
+                : _projectDescription.Trim();
+
+            File.WriteAllText(Path.Combine(baseDir, "description.txt"), description + Environment.NewLine, System.Text.Encoding.UTF8);
+            File.WriteAllText(Path.Combine(baseDir, "description_workshop.txt"), description + Environment.NewLine, System.Text.Encoding.UTF8);
+            summary.AppendLine("  - 导出 description.txt");
+            summary.AppendLine("  - 导出 description_workshop.txt");
+        }
+
+        private void WriteProjectBuildFile(string baseDir, System.Text.StringBuilder summary)
+        {
+            string buildFile = Path.Combine(baseDir, "build.txt");
+            File.WriteAllText(buildFile, GenerateBuildTxt(), System.Text.Encoding.UTF8);
+            summary.AppendLine("  - 导出 build.txt");
+        }
+
+        private void WriteProjectIconFiles(string baseDir, string projectCodeName, System.Text.StringBuilder summary)
+        {
+            string iconSource = _projectIconPath;
+            using Bitmap sourceIcon = !string.IsNullOrWhiteSpace(iconSource) && File.Exists(iconSource)
+                ? LoadBitmapCopy(iconSource)
+                : CreateDefaultModIcon(80, projectCodeName);
+            using Bitmap icon = ResizeImage(sourceIcon, 80, 80);
+            using Bitmap smallIcon = ResizeImage(icon, 30, 30);
+
+            string iconTarget = Path.Combine(baseDir, "icon.png");
+            string smallIconTarget = Path.Combine(baseDir, "icon_small.png");
+            SavePng(icon, iconTarget);
+            SavePng(smallIcon, smallIconTarget);
+            summary.AppendLine("  - 导出 icon.png");
+            summary.AppendLine("  - 导出 icon_small.png");
+        }
+
+        private string GenerateBuildTxt()
+        {
+            var lines = new List<string>
+            {
+                $"displayName = {EscapeBuildValue(_projectName)}",
+                $"author = {EscapeBuildValue(string.IsNullOrWhiteSpace(_buildAuthor) ? Environment.UserName : _buildAuthor)}",
+                $"version = {EscapeBuildValue(_buildVersion)}"
+            };
+
+            if (!string.IsNullOrWhiteSpace(_buildHomepage))
+                lines.Add($"homepage = {EscapeBuildValue(_buildHomepage)}");
+
+            return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+        }
+
+        private static string EscapeBuildValue(string value)
+        {
+            return (value ?? string.Empty)
+                .Replace("\r", " ")
+                .Replace("\n", " ")
+                .Trim();
+        }
+
+        private static Bitmap LoadBitmapCopy(string path)
+        {
+            using var image = Image.FromFile(path);
+            return new Bitmap(image);
+        }
+
+        private static Bitmap ResizeImage(Image source, int width, int height)
+        {
+            var bitmap = new Bitmap(width, height);
+            using Graphics graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.Clear(Color.Transparent);
+            graphics.DrawImage(source, new Rectangle(0, 0, width, height));
+            return bitmap;
+        }
+
+        private static Bitmap CreateDefaultModIcon(int size, string projectCodeName)
+        {
+            var bitmap = new Bitmap(size, size);
+            using Graphics graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var bg = new LinearGradientBrush(new Rectangle(0, 0, size, size), Color.FromArgb(34, 211, 193), Color.FromArgb(245, 179, 53), 135F);
+            graphics.FillRectangle(bg, 0, 0, size, size);
+            using var overlay = new SolidBrush(Color.FromArgb(72, 12, 18, 27));
+            graphics.FillEllipse(overlay, size * 0.12F, size * 0.12F, size * 0.76F, size * 0.76F);
+            using var font = new Font("Microsoft YaHei UI", Math.Max(9F, size * 0.34F), FontStyle.Bold, GraphicsUnit.Point);
+            using var textBrush = new SolidBrush(Color.White);
+            string text = string.IsNullOrWhiteSpace(projectCodeName)
+                ? "TM"
+                : projectCodeName[..Math.Min(2, projectCodeName.Length)].ToUpperInvariant();
+            using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            graphics.DrawString(text, font, textBrush, new RectangleF(0, 0, size, size), format);
+            return bitmap;
+        }
+
+        private static void SavePng(Image image, string targetPath)
+        {
+            string tempPath = targetPath + ".tmp";
+            image.Save(tempPath, System.Drawing.Imaging.ImageFormat.Png);
+            File.Copy(tempPath, targetPath, true);
+            File.Delete(tempPath);
         }
 
         private static string BuildStatsTextModern(ModItemData item)
@@ -1485,7 +1778,7 @@ namespace tmcreator
                 parts.Add($"动作 {item.UseStyleId}");
                 if (item.Knockback > 0) parts.Add($"击退 {item.Knockback}");
                 if (item.CriticalChance > 0) parts.Add($"暴击 {item.CriticalChance}%");
-                if (item.UsesProjectile) parts.Add($"弹幕 {item.ProjectileId} / 速度 {item.ProjectileSpeed:0.#}");
+                if (item.UsesProjectile) parts.Add($"弹幕 {NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId)} / 速度 {item.ProjectileSpeed:0.#}");
                 if (item.ConsumeOnUse) parts.Add("使用消耗");
             }
 
@@ -1698,11 +1991,22 @@ namespace tmcreator
 
         private void RenameProject_Click(object? sender, EventArgs e)
         {
-            using var dialog = new ProjectNameDialog("修改项目名称", _projectName);
+            using var dialog = new ProjectSettingsDialog(
+                _projectName,
+                _projectDescription,
+                _buildVersion,
+                _buildAuthor,
+                _buildHomepage,
+                _projectIconPath);
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
             _projectName = dialog.ProjectName;
+            _projectDescription = dialog.ProjectDescription;
+            _buildVersion = dialog.BuildVersion;
+            _buildAuthor = dialog.BuildAuthor;
+            _buildHomepage = dialog.BuildHomepage;
+            _projectIconPath = dialog.ProjectIconPath;
             UpdateProjectStatus();
         }
 
@@ -1723,10 +2027,16 @@ namespace tmcreator
         private void ResetProject(string projectName)
         {
             _projectName = string.IsNullOrWhiteSpace(projectName) ? "未命名工程" : projectName.Trim();
+            _projectDescription = string.Empty;
+            _projectIconPath = string.Empty;
+            _buildVersion = "0.1.0";
+            _buildAuthor = string.Empty;
+            _buildHomepage = string.Empty;
             _projectFilePath = null;
             _items.Clear();
             ClearItemCards();
             ClearInputs();
+            UpdateProjectileReferenceOptions();
             UpdateProjectStatus();
             UpdateEmptyState();
         }
@@ -1736,6 +2046,11 @@ namespace tmcreator
             string projectDir = Path.GetDirectoryName(filePath) ?? AppContext.BaseDirectory;
 
             _projectName = string.IsNullOrWhiteSpace(project.ProjectName) ? "未命名工程" : project.ProjectName.Trim();
+            _projectDescription = project.ProjectDescription ?? string.Empty;
+            _projectIconPath = ResolveProjectPath(project.ProjectIconPath, projectDir);
+            _buildVersion = string.IsNullOrWhiteSpace(project.BuildVersion) ? "0.1.0" : project.BuildVersion.Trim();
+            _buildAuthor = project.BuildAuthor ?? string.Empty;
+            _buildHomepage = project.BuildHomepage ?? string.Empty;
             _projectFilePath = filePath;
 
             _editingItem = null;
@@ -1751,6 +2066,7 @@ namespace tmcreator
             foreach (var item in _items)
                 AddItemCardModern(item);
 
+            UpdateProjectileReferenceOptions();
             ApplyDraft(project.Draft ?? new ProjectDraftData(), projectDir);
             UpdateProjectStatus();
             UpdateEmptyState();
@@ -1773,6 +2089,11 @@ namespace tmcreator
             return new ProjectData
             {
                 ProjectName = _projectName,
+                ProjectDescription = _projectDescription,
+                ProjectIconPath = _projectIconPath,
+                BuildVersion = _buildVersion,
+                BuildAuthor = _buildAuthor,
+                BuildHomepage = _buildHomepage,
                 Items = _items.Select(CloneItem).ToList(),
                 Draft = CaptureDraft()
             };
@@ -1797,7 +2118,8 @@ namespace tmcreator
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = (int)numCriticalChance.Value,
                 UsesProjectile = chkUsesProjectile.Checked,
-                ProjectileId = (int)numProjectileId.Value,
+                ProjectileId = GetProjectileIdFallback(txtProjectileId.Text),
+                ProjectileReference = GetProjectileReferenceInput(),
                 ProjectileSpeed = numProjectileSpeed.Value,
                 ConsumeOnUse = chkConsumeOnUse.Checked,
                 PickaxePower = (int)numPickaxePower.Value,
@@ -1848,7 +2170,7 @@ namespace tmcreator
             SetNumericValue(numCriticalChance, draft.CriticalChance);
             chkUsesProjectile.Checked = draft.UsesProjectile;
             chkConsumeOnUse.Checked = draft.ConsumeOnUse;
-            SetNumericValue(numProjectileId, draft.ProjectileId);
+            txtProjectileId.Text = NormalizeProjectileReference(draft.ProjectileReference, draft.ProjectileId);
             SetNumericValue(numProjectileSpeed, draft.ProjectileSpeed);
             SetNumericValue(numPickaxePower, draft.PickaxePower);
             SetNumericValue(numAxePower, draft.AxePower);
@@ -1923,6 +2245,7 @@ namespace tmcreator
             ClearItemCards();
             foreach (var item in _items)
                 AddItemCardModern(item);
+            UpdateProjectileReferenceOptions();
             UpdateEmptyState();
         }
 
@@ -1934,12 +2257,13 @@ namespace tmcreator
             string fileState = string.IsNullOrWhiteSpace(_projectFilePath)
                 ? "未保存"
                 : Path.GetFileName(_projectFilePath);
-            _projectStatusLabel.Text = $"项目：{_projectName}    文件：{fileState}";
+            _projectStatusLabel.Text = $"项目：{_projectName}    版本：{_buildVersion}    文件：{fileState}";
         }
 
         private void PrepareProjectAssets(ProjectData project, string projectDir)
         {
             string assetsDir = Path.Combine(projectDir, "assets");
+            project.ProjectIconPath = CopyTextureIntoProject(project.ProjectIconPath, projectDir, assetsDir, "project_icon");
             foreach (var item in project.Items)
             {
                 item.TexturePath = item.Type == ItemType.Buff && item.BuffIconSource == BuffIconSource.Vanilla
@@ -1991,6 +2315,7 @@ namespace tmcreator
                 item.VanillaBuffIconId = 1;
             if (item.UseStyleId <= 0)
                 item.UseStyleId = item.UsesProjectile ? 5 : 1;
+            item.ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             if (item.TextureFrameCount <= 0)
                 item.TextureFrameCount = 1;
         }
@@ -2011,6 +2336,7 @@ namespace tmcreator
                 CriticalChance = item.CriticalChance,
                 UsesProjectile = item.UsesProjectile,
                 ProjectileId = item.ProjectileId,
+                ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId),
                 ProjectileSpeed = item.ProjectileSpeed,
                 ConsumeOnUse = item.ConsumeOnUse,
                 PickaxePower = item.PickaxePower,
@@ -2062,6 +2388,8 @@ namespace tmcreator
             {
                 Id = source.Id,
                 BlockDefId = source.BlockDefId,
+                CanvasX = source.CanvasX,
+                CanvasY = source.CanvasY,
                 ParamValues = source.ParamValues.ToDictionary(pair => pair.Key, pair => pair.Value),
                 ParamBlocks = source.ParamBlocks.ToDictionary(pair => pair.Key, pair => CloneBlock(pair.Value)),
                 TrueBranch = source.TrueBranch.Select(CloneBlock).ToList(),
@@ -2217,6 +2545,12 @@ namespace tmcreator
                 return;
             }
 
+            if (IsDuplicateInternalName(txtName.Text.Trim()))
+            {
+                UIMessageBox.Show("内部名称不能重名，请换一个唯一的内部名称。");
+                return;
+            }
+
             var item = new ModItemData
             {
                 Name = txtName.Text.Trim(),
@@ -2243,6 +2577,7 @@ namespace tmcreator
 
             _items.Add(item);
             AddItemCard(item);
+            UpdateProjectileReferenceOptions();
             ClearInputs();
         }
 
@@ -2260,7 +2595,7 @@ namespace tmcreator
             numCriticalChance.Value = 4;
             chkUsesProjectile.Checked = false;
             chkConsumeOnUse.Checked = false;
-            numProjectileId.Value = 1;
+            txtProjectileId.Text = "1";
             numProjectileSpeed.Value = 10;
             numPickaxePower.Value = 0;
             numAxePower.Value = 0;
@@ -2451,6 +2786,12 @@ namespace tmcreator
                 return;
             }
 
+            if (TryGetDuplicateInternalName(out string duplicateName))
+            {
+                UIMessageBox.Show($"内部名称不能重名：{duplicateName}");
+                return;
+            }
+
             var dialog = new FolderBrowserDialog
             {
                 Description = "选择导出目录 (tmodloader mod源码文件夹)"
@@ -2472,6 +2813,13 @@ namespace tmcreator
                 var sbItems = new System.Text.StringBuilder();
                 var sbLoc = new System.Text.StringBuilder();
                 string projectCodeName = GetProjectCodeName();
+                if (_items.Any(HasFlowScript))
+                {
+                    string flowVariablesFile = Path.Combine(baseDir, "TMCreatorFlowVariables.cs");
+                    File.WriteAllText(flowVariablesFile, GenerateFlowVariablesCode(projectCodeName), System.Text.Encoding.UTF8);
+                    sbItems.AppendLine("  - 导出全局流程变量: TMCreatorFlowVariables.cs");
+                }
+
                 sbLoc.AppendLine("Mods: {");
                 sbLoc.AppendLine($"  {projectCodeName}: {{");
                 sbLoc.AppendLine("    Items: {");
@@ -2550,6 +2898,57 @@ namespace tmcreator
 
         private string GetProjectCodeName() => SanitizeClassName(_projectName);
 
+        private static bool HasFlowScript(ModItemData item) => item.Flow?.Blocks.Count > 0;
+
+        private static string GenerateFlowVariablesCode(string projectCodeName)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("using System;");
+            sb.AppendLine("using System.Collections.Generic;");
+            sb.AppendLine("using Terraria.ModLoader;");
+            sb.AppendLine();
+            sb.AppendLine($"namespace {projectCodeName}");
+            sb.AppendLine("{");
+            sb.AppendLine("    internal static class TMCreatorFlowVariables");
+            sb.AppendLine("    {");
+            sb.AppendLine("        private static readonly Dictionary<string, float> Values = new(StringComparer.OrdinalIgnoreCase);");
+            sb.AppendLine();
+            sb.AppendLine("        public static float Get(string name)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (string.IsNullOrWhiteSpace(name))");
+            sb.AppendLine("                return 0f;");
+            sb.AppendLine();
+            sb.AppendLine("            lock (Values)");
+            sb.AppendLine("                return Values.TryGetValue(name.Trim(), out float value) ? value : 0f;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public static void Set(string name, float value)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (string.IsNullOrWhiteSpace(name))");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine("            lock (Values)");
+            sb.AppendLine("                Values[name.Trim()] = value;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        public static void Clear()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            lock (Values)");
+            sb.AppendLine("                Values.Clear();");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    internal sealed class TMCreatorFlowVariableSystem : ModSystem");
+            sb.AppendLine("    {");
+            sb.AppendLine("        public override void OnWorldUnload()");
+            sb.AppendLine("        {");
+            sb.AppendLine("            TMCreatorFlowVariables.Clear();");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
         private string GenerateItemCode(ModItemData item, string className)
         {
             var sb = new System.Text.StringBuilder();
@@ -2578,12 +2977,6 @@ namespace tmcreator
             sb.AppendLine("{");
             sb.AppendLine($"    public class {className} : ModItem");
             sb.AppendLine("    {");
-            if (hasFlow)
-            {
-                sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
-                sb.AppendLine();
-            }
-
             if (hasAnimation)
             {
                 sb.AppendLine("        public override void SetStaticDefaults()");
@@ -2631,7 +3024,7 @@ namespace tmcreator
 
                 if (item.UsesProjectile)
                 {
-                    sb.AppendLine($"            Item.shoot = {item.ProjectileId};");
+                    sb.AppendLine($"            Item.shoot = {GetProjectileTypeExpression(item.ProjectileReference, item.ProjectileId.ToString(System.Globalization.CultureInfo.InvariantCulture), GetProjectCodeName())};");
                     sb.AppendLine($"            Item.shootSpeed = {FormatFloatLiteral(item.ProjectileSpeed)};");
                     sb.AppendLine("            Item.noMelee = true;");
                 }
@@ -2687,14 +3080,14 @@ namespace tmcreator
 
             if (hasFlow && item.Type != ItemType.Accessory)
             {
-                AppendFlowCode(sb, item.Flow!, $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
+                AppendFlowCode(sb, item.Flow!, $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc", GetProjectCodeName());
             }
 
             sb.AppendLine("    }");
 
             if (hasAccessoryFlow)
             {
-                AppendAccessoryFlowCode(sb, item.Flow!, $"{className}AccessoryPlayer", $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
+                AppendAccessoryFlowCode(sb, item.Flow!, $"{className}AccessoryPlayer", $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc", GetProjectCodeName());
                 AppendFlowTempStatsPlayerClass(sb, $"{className}FlowStatsPlayer");
                 AppendFlowTempStatsNpcClass(sb, $"{className}FlowStatsNpc");
             }
@@ -2743,7 +3136,7 @@ namespace tmcreator
             sb.AppendLine("    }");
 
             if (hasFlow)
-                AppendBuffFlowCode(sb, item.Flow!, className);
+                AppendBuffFlowCode(sb, item.Flow!, className, GetProjectCodeName());
 
             sb.AppendLine("}");
             return sb.ToString();
@@ -2774,12 +3167,6 @@ namespace tmcreator
             sb.AppendLine("{");
             sb.AppendLine($"    public class {className} : ModProjectile");
             sb.AppendLine("    {");
-            if (hasFlow)
-            {
-                sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
-                sb.AppendLine();
-            }
-
             if (hasAnimation)
             {
                 sb.AppendLine("        public override void SetStaticDefaults()");
@@ -2805,7 +3192,7 @@ namespace tmcreator
             sb.AppendLine("        }");
 
             if (hasFlow || hasAnimation)
-                AppendProjectileFlowCode(sb, item.Flow, hasAnimation, Math.Max(2, item.TextureFrameCount), $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc");
+                AppendProjectileFlowCode(sb, item.Flow, hasAnimation, Math.Max(2, item.TextureFrameCount), $"{className}FlowStatsPlayer", $"{className}FlowStatsNpc", GetProjectCodeName());
 
             sb.AppendLine("    }");
 
@@ -2932,7 +3319,42 @@ namespace tmcreator
                 : item.UsesProjectile ? 5 : 1;
         }
 
-        private static void AppendFlowCode(System.Text.StringBuilder sb, FlowScript flow, string tempStatPlayerClassName, string tempStatNpcClassName)
+        private static string GetProjectileTypeExpression(string? reference, string fallback, string projectCodeName)
+        {
+            string value = NormalizeProjectileReference(reference, GetProjectileIdFallback(fallback));
+            if (int.TryParse(value, out int intValue))
+                return Math.Max(0, intValue).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double doubleValue))
+                return Math.Max(0, (int)Math.Round(doubleValue)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (!IsAsciiIdentifier(value))
+                return ToIntLiteral(fallback, "1");
+
+            string className = SanitizeClassName(value);
+            if (string.IsNullOrWhiteSpace(projectCodeName))
+                return $"ModContent.ProjectileType<{className}>()";
+
+            return $"ModContent.ProjectileType<global::{projectCodeName}.Projectiles.{className}>()";
+        }
+
+        private static bool IsAsciiIdentifier(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            char first = value[0];
+            if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_'))
+                return false;
+
+            return value.All(c =>
+                (c >= 'A' && c <= 'Z') ||
+                (c >= 'a' && c <= 'z') ||
+                (c >= '0' && c <= '9') ||
+                c == '_');
+        }
+
+        private static void AppendFlowCode(System.Text.StringBuilder sb, FlowScript flow, string tempStatPlayerClassName, string tempStatNpcClassName, string projectCodeName)
         {
             var eventGroups = BuildFlowEventGroups(flow.Blocks, "on_use");
             if (eventGroups.Count == 0)
@@ -2940,11 +3362,11 @@ namespace tmcreator
 
             sb.AppendLine();
             sb.AppendLine("        // Generated visual flow logic.");
-            AppendUseItemFlow(sb, eventGroups.Where(group => group.EventId == "on_use").ToList());
-            AppendHoldItemFlow(sb, eventGroups.Where(group => group.EventId == "while_held").ToList());
-            AppendOnHitNpcFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_npc").ToList());
-            AppendOnHitPvpFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_pvp").ToList());
-            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+            AppendUseItemFlow(sb, eventGroups.Where(group => group.EventId == "on_use").ToList(), projectCodeName);
+            AppendHoldItemFlow(sb, eventGroups.Where(group => group.EventId == "while_held").ToList(), projectCodeName);
+            AppendOnHitNpcFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_npc").ToList(), projectCodeName);
+            AppendOnHitPvpFlow(sb, eventGroups.Where(group => group.EventId == "on_hit_pvp").ToList(), projectCodeName);
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName, projectCodeName);
         }
 
         private static List<FlowEventGroup> BuildFlowEventGroups(IEnumerable<BlockInstance> blocks, string defaultEventId)
@@ -2975,7 +3397,7 @@ namespace tmcreator
             return groups.Where(group => group.Blocks.Count > 0).ToList();
         }
 
-        private static void AppendUseItemFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups)
+        private static void AppendUseItemFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups, string projectCodeName)
         {
             if (groups.Count == 0)
                 return;
@@ -2985,12 +3407,12 @@ namespace tmcreator
             sb.AppendLine("        {");
             sb.AppendLine("            NPC npc = null;");
             sb.AppendLine("            Player targetPlayer = null;");
-            AppendFlowGroupBodies(sb, groups, 12);
+            AppendFlowGroupBodies(sb, groups, 12, projectCodeName: projectCodeName);
             sb.AppendLine("            return true;");
             sb.AppendLine("        }");
         }
 
-        private static void AppendHoldItemFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups)
+        private static void AppendHoldItemFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups, string projectCodeName)
         {
             if (groups.Count == 0)
                 return;
@@ -3000,11 +3422,11 @@ namespace tmcreator
             sb.AppendLine("        {");
             sb.AppendLine("            NPC npc = null;");
             sb.AppendLine("            Player targetPlayer = null;");
-            AppendFlowGroupBodies(sb, groups, 12);
+            AppendFlowGroupBodies(sb, groups, 12, projectCodeName: projectCodeName);
             sb.AppendLine("        }");
         }
 
-        private static void AppendOnHitNpcFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups)
+        private static void AppendOnHitNpcFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups, string projectCodeName)
         {
             if (groups.Count == 0)
                 return;
@@ -3014,11 +3436,11 @@ namespace tmcreator
             sb.AppendLine("        {");
             sb.AppendLine("            NPC npc = target;");
             sb.AppendLine("            Player targetPlayer = null;");
-            AppendFlowGroupBodies(sb, groups, 12);
+            AppendFlowGroupBodies(sb, groups, 12, projectCodeName: projectCodeName);
             sb.AppendLine("        }");
         }
 
-        private static void AppendOnHitPvpFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups)
+        private static void AppendOnHitPvpFlow(System.Text.StringBuilder sb, List<FlowEventGroup> groups, string projectCodeName)
         {
             if (groups.Count == 0)
                 return;
@@ -3028,11 +3450,11 @@ namespace tmcreator
             sb.AppendLine("        {");
             sb.AppendLine("            NPC npc = null;");
             sb.AppendLine("            Player targetPlayer = target;");
-            AppendFlowGroupBodies(sb, groups, 12);
+            AppendFlowGroupBodies(sb, groups, 12, projectCodeName: projectCodeName);
             sb.AppendLine("        }");
         }
 
-        private static void AppendAccessoryFlowCode(System.Text.StringBuilder sb, FlowScript flow, string accessoryPlayerClassName, string tempStatPlayerClassName, string tempStatNpcClassName)
+        private static void AppendAccessoryFlowCode(System.Text.StringBuilder sb, FlowScript flow, string accessoryPlayerClassName, string tempStatPlayerClassName, string tempStatNpcClassName, string projectCodeName)
         {
             var eventGroups = BuildFlowEventGroups(flow.Blocks, "accessory_wearing");
             var wearingGroups = eventGroups.Where(group => group.EventId == "accessory_wearing").ToList();
@@ -3047,7 +3469,6 @@ namespace tmcreator
             sb.AppendLine("    {");
             sb.AppendLine("        private bool _equippedThisTick;");
             sb.AppendLine("        private bool _wasEquipped;");
-            sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
             sb.AppendLine();
             sb.AppendLine("        public void UpdateEquippedAccessory()");
             sb.AppendLine("        {");
@@ -3061,11 +3482,11 @@ namespace tmcreator
             {
                 sb.AppendLine("            if (firstEquipTick)");
                 sb.AppendLine("            {");
-                AppendFlowGroupBodies(sb, equipGroups, 16, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, equipGroups, 16, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
                 sb.AppendLine("            }");
             }
             if (wearingGroups.Count > 0)
-                AppendFlowGroupBodies(sb, wearingGroups, 12, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, wearingGroups, 12, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
             sb.AppendLine("        }");
             sb.AppendLine();
             sb.AppendLine("        public override void ResetEffects()");
@@ -3084,7 +3505,7 @@ namespace tmcreator
                 sb.AppendLine("            Player player = Player;");
                 sb.AppendLine("            NPC npc = target;");
                 sb.AppendLine("            Player targetPlayer = null;");
-                AppendFlowGroupBodies(sb, attackGroups, 12, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, attackGroups, 12, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
                 sb.AppendLine("        }");
             }
 
@@ -3098,17 +3519,17 @@ namespace tmcreator
                 sb.AppendLine("                Player player = Player;");
                 sb.AppendLine("                NPC npc = null;");
                 sb.AppendLine("                Player targetPlayer = player;");
-                AppendFlowGroupBodies(sb, unequipGroups, 16, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, unequipGroups, 16, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
                 sb.AppendLine("            }");
                 sb.AppendLine();
             }
             sb.AppendLine("            _wasEquipped = _equippedThisTick;");
             sb.AppendLine("        }");
-            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName, projectCodeName);
             sb.AppendLine("    }");
         }
 
-        private static void AppendBuffFlowCode(System.Text.StringBuilder sb, FlowScript flow, string buffClassName)
+        private static void AppendBuffFlowCode(System.Text.StringBuilder sb, FlowScript flow, string buffClassName, string projectCodeName)
         {
             string tempStatPlayerClassName = $"{buffClassName}FlowStatsPlayer";
             string tempStatNpcClassName = $"{buffClassName}FlowStatsNpc";
@@ -3123,7 +3544,6 @@ namespace tmcreator
             sb.AppendLine($"    public class {buffClassName}Player : ModPlayer");
             sb.AppendLine("    {");
             sb.AppendLine("        private bool _hadBuff;");
-            sb.AppendLine("        private readonly System.Collections.Generic.Dictionary<string, float> _flowVariables = new();");
             sb.AppendLine();
             sb.AppendLine("        public override void PostUpdateBuffs()");
             sb.AppendLine("        {");
@@ -3138,32 +3558,32 @@ namespace tmcreator
             {
                 sb.AppendLine("                if (!_hadBuff)");
                 sb.AppendLine("                {");
-                AppendFlowGroupBodies(sb, gainGroups, 20, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, gainGroups, 20, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
                 sb.AppendLine("                }");
             }
             if (updateGroups.Count > 0)
-                AppendFlowGroupBodies(sb, updateGroups, 16, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, updateGroups, 16, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
             sb.AppendLine("            }");
 
             if (endGroups.Count > 0)
             {
                 sb.AppendLine("            else if (_hadBuff)");
                 sb.AppendLine("            {");
-                AppendFlowGroupBodies(sb, endGroups, 16, "player.GetSource_FromThis()");
+                AppendFlowGroupBodies(sb, endGroups, 16, "player.GetSource_FromThis()", projectCodeName: projectCodeName);
                 sb.AppendLine("            }");
             }
 
             sb.AppendLine();
             sb.AppendLine("            _hadBuff = hasBuff;");
             sb.AppendLine("        }");
-            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+            AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName, projectCodeName);
             sb.AppendLine("    }");
 
             AppendFlowTempStatsPlayerClass(sb, tempStatPlayerClassName);
             AppendFlowTempStatsNpcClass(sb, tempStatNpcClassName);
         }
 
-        private static void AppendProjectileFlowCode(System.Text.StringBuilder sb, FlowScript? flow, bool hasAnimation, int frameCount, string tempStatPlayerClassName, string tempStatNpcClassName)
+        private static void AppendProjectileFlowCode(System.Text.StringBuilder sb, FlowScript? flow, bool hasAnimation, int frameCount, string tempStatPlayerClassName, string tempStatNpcClassName, string projectCodeName)
         {
             var eventGroups = flow == null
                 ? new List<FlowEventGroup>()
@@ -3182,7 +3602,7 @@ namespace tmcreator
                 sb.AppendLine("            NPC npc = null;");
                 sb.AppendLine("            Player targetPlayer = null;");
                 sb.AppendLine("            Projectile projectile = Projectile;");
-                AppendFlowGroupBodies(sb, spawnGroups, 12, "player.GetSource_FromThis()", "projectile");
+                AppendFlowGroupBodies(sb, spawnGroups, 12, "player.GetSource_FromThis()", "projectile", projectCodeName);
                 sb.AppendLine("        }");
             }
 
@@ -3208,7 +3628,7 @@ namespace tmcreator
                     sb.AppendLine("            NPC npc = null;");
                     sb.AppendLine("            Player targetPlayer = null;");
                     sb.AppendLine("            Projectile projectile = Projectile;");
-                    AppendFlowGroupBodies(sb, updateGroups, 12, "player.GetSource_FromThis()", "projectile");
+                    AppendFlowGroupBodies(sb, updateGroups, 12, "player.GetSource_FromThis()", "projectile", projectCodeName);
                 }
                 sb.AppendLine("        }");
             }
@@ -3222,7 +3642,7 @@ namespace tmcreator
                 sb.AppendLine("            NPC npc = target;");
                 sb.AppendLine("            Player targetPlayer = null;");
                 sb.AppendLine("            Projectile projectile = Projectile;");
-                AppendFlowGroupBodies(sb, hitNpcGroups, 12, "player.GetSource_FromThis()", "projectile");
+                AppendFlowGroupBodies(sb, hitNpcGroups, 12, "player.GetSource_FromThis()", "projectile", projectCodeName);
                 sb.AppendLine("        }");
             }
 
@@ -3235,17 +3655,17 @@ namespace tmcreator
                 sb.AppendLine("            NPC npc = null;");
                 sb.AppendLine("            Player targetPlayer = target;");
                 sb.AppendLine("            Projectile projectile = Projectile;");
-                AppendFlowGroupBodies(sb, hitPlayerGroups, 12, "player.GetSource_FromThis()", "projectile");
+                AppendFlowGroupBodies(sb, hitPlayerGroups, 12, "player.GetSource_FromThis()", "projectile", projectCodeName);
                 sb.AppendLine("        }");
             }
 
             if (eventGroups.Count > 0)
-                AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName);
+                AppendFlowHelpers(sb, tempStatPlayerClassName, tempStatNpcClassName, projectCodeName);
         }
 
-        private static void AppendFlowGroupBodies(System.Text.StringBuilder sb, IEnumerable<FlowEventGroup> groups, int indent, string sourceExpression = "player.GetSource_ItemUse(Item)", string projectileExpression = "null")
+        private static void AppendFlowGroupBodies(System.Text.StringBuilder sb, IEnumerable<FlowEventGroup> groups, int indent, string sourceExpression = "player.GetSource_ItemUse(Item)", string projectileExpression = "null", string projectCodeName = "")
         {
-            var context = new FlowGenerationContext(sourceExpression, projectileExpression);
+            var context = new FlowGenerationContext(sourceExpression, projectileExpression, projectCodeName);
             foreach (var group in groups)
             {
                 AppendLine(sb, indent, $"// {GetFlowEventComment(group.EventId)}");
@@ -3309,7 +3729,7 @@ namespace tmcreator
                 }
                 case "spawn_projectile":
                 {
-                    string projectile = GetIntExpression(block, "projectile", "1");
+                    string projectile = GetProjectileExpression(block, "projectile", "1", context.ProjectCodeName);
                     string damage = GetIntExpression(block, "damage", "50");
                     string speed = GetFloatExpression(block, "speed", "10");
                     string directionVar = context.Next("flowDirection");
@@ -3489,6 +3909,11 @@ namespace tmcreator
             return ToIntLiteral(GetParamString(block, paramName, fallback), fallback);
         }
 
+        private static string GetProjectileExpression(BlockInstance block, string paramName, string fallback, string projectCodeName)
+        {
+            return GetProjectileTypeExpression(GetParamString(block, paramName, fallback), fallback, projectCodeName);
+        }
+
         private static string GetFloatExpression(BlockInstance block, string paramName, string fallback)
         {
             if (block.ParamBlocks.TryGetValue(paramName, out var nestedBlock))
@@ -3562,7 +3987,7 @@ namespace tmcreator
             return doubleValue.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "f";
         }
 
-        private static void AppendFlowHelpers(System.Text.StringBuilder sb, string tempStatPlayerClassName, string tempStatNpcClassName)
+        private static void AppendFlowHelpers(System.Text.StringBuilder sb, string tempStatPlayerClassName, string tempStatNpcClassName, string projectCodeName)
         {
             sb.AppendLine();
             sb.AppendLine("        private void Flow_ForEachNpc(Player player, NPC npc, Player targetPlayer, string selector, Action<NPC> action)");
@@ -3657,13 +4082,13 @@ namespace tmcreator
             sb.AppendLine();
             sb.AppendLine("        private float Flow_GetVariable(string name)");
             sb.AppendLine("        {");
-            sb.AppendLine("            return _flowVariables.TryGetValue(name, out float value) ? value : 0f;");
+            sb.AppendLine($"            return global::{projectCodeName}.TMCreatorFlowVariables.Get(name);");
             sb.AppendLine("        }");
 
             sb.AppendLine();
             sb.AppendLine("        private void Flow_SetVariable(string name, float value)");
             sb.AppendLine("        {");
-            sb.AppendLine("            _flowVariables[name] = value;");
+            sb.AppendLine($"            global::{projectCodeName}.TMCreatorFlowVariables.Set(name, value);");
             sb.AppendLine("        }");
 
             sb.AppendLine();
@@ -4030,14 +4455,16 @@ namespace tmcreator
         {
             private int _index;
 
-            public FlowGenerationContext(string sourceExpression, string projectileExpression)
+            public FlowGenerationContext(string sourceExpression, string projectileExpression, string projectCodeName)
             {
                 SourceExpression = sourceExpression;
                 ProjectileExpression = projectileExpression;
+                ProjectCodeName = projectCodeName;
             }
 
             public string SourceExpression { get; }
             public string ProjectileExpression { get; }
+            public string ProjectCodeName { get; }
 
             public string Next(string prefix)
             {

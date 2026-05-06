@@ -4,8 +4,13 @@ namespace tmcreator.Models;
 
 public class ProjectData
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public string ProjectName { get; set; } = "未命名工程";
+    public string ProjectDescription { get; set; } = string.Empty;
+    public string ProjectIconPath { get; set; } = string.Empty;
+    public string BuildVersion { get; set; } = "0.1.0";
+    public string BuildAuthor { get; set; } = string.Empty;
+    public string BuildHomepage { get; set; } = string.Empty;
     public List<ModItemData> Items { get; set; } = new();
     public ProjectDraftData Draft { get; set; } = new();
 }
@@ -25,6 +30,7 @@ public class ProjectDraftData
     public int CriticalChance { get; set; } = 4;
     public bool UsesProjectile { get; set; }
     public int ProjectileId { get; set; } = 1;
+    public string ProjectileReference { get; set; } = string.Empty;
     public decimal ProjectileSpeed { get; set; } = 10;
     public bool ConsumeOnUse { get; set; }
     public int PickaxePower { get; set; }

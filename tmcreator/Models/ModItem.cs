@@ -60,6 +60,7 @@ public class ModItemData
     public int CriticalChance { get; set; } = 4;
     public bool UsesProjectile { get; set; }
     public int ProjectileId { get; set; } = 1;
+    public string ProjectileReference { get; set; } = string.Empty;
     public decimal ProjectileSpeed { get; set; } = 10;
     public bool ConsumeOnUse { get; set; }
     public int PickaxePower { get; set; }

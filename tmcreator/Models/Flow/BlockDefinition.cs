@@ -54,6 +54,8 @@ public class BlockInstance
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
     public string BlockDefId { get; set; } = "";
+    public int CanvasX { get; set; } = -1;
+    public int CanvasY { get; set; } = -1;
     public Dictionary<string, string> ParamValues { get; set; } = new();
     public Dictionary<string, BlockInstance> ParamBlocks { get; set; } = new();
     public List<BlockInstance> TrueBranch { get; set; } = new();
