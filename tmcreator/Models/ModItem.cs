@@ -91,6 +91,7 @@ public class ModItemData
     public string TexturePath { get; set; } = string.Empty;
     public bool IsMultiFrameTexture { get; set; }
     public int TextureFrameCount { get; set; } = 1;
+    public bool IsWhipProjectile { get; set; }
     public BuffIconSource BuffIconSource { get; set; } = BuffIconSource.Custom;
     public int VanillaBuffIconId { get; set; } = 1;
     public FlowScript? Flow { get; set; }

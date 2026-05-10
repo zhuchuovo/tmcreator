@@ -27,6 +27,12 @@ namespace tmcreator
         private Panel? _accessorySection;
         private Panel? _buffSection;
         private Panel? _recipeSection;
+        private Label? _lblCombatUseTime;
+        private Label? _lblCombatCritical;
+        private Label? _lblCombatDamageKind;
+        private Label? _lblProjectileReference;
+        private Label? _lblProjectileSpeed;
+        private Label? _lblUseStyleId;
         private Label? _rightSubtitleLabel;
         private Label? _emptyStateLabel;
         private readonly UIComboBox cmbDamageKind = new();
@@ -34,6 +40,7 @@ namespace tmcreator
         private readonly UICheckBox chkUsesProjectile = new();
         private readonly UICheckBox chkConsumeOnUse = new();
         private readonly UICheckBox chkMultiFrameTexture = new();
+        private readonly UICheckBox chkWhipProjectile = new();
         private readonly System.Windows.Forms.TextBox txtProjectileId = new();
         private readonly NumericUpDown numProjectileSpeed = new();
         private readonly NumericUpDown numVanillaBuffIconId = new();
@@ -407,11 +414,11 @@ namespace tmcreator
         {
             _combatSection = CreateSection("战斗手感", "伤害、职业、攻击动作与投掷物", 300);
             AddNumericField(_combatSection, "伤害", numDamage, 18, 58, 72);
-            AddNumericField(_combatSection, "使用时间", numUseTime, 196, 58, 72);
+            _lblCombatUseTime = AddNumericField(_combatSection, "使用时间", numUseTime, 196, 58, 72);
             AddNumericField(_combatSection, "击退", numKnockback, 18, 98, 72);
-            AddNumericField(_combatSection, "暴击率", numCriticalChance, 196, 98, 72);
+            _lblCombatCritical = AddNumericField(_combatSection, "暴击率", numCriticalChance, 196, 98, 72);
 
-            AddFieldLabel(_combatSection, "伤害类型", 18, 134, 80);
+            _lblCombatDamageKind = AddFieldLabel(_combatSection, "伤害类型", 18, 134, 80);
             cmbDamageKind.Location = new Point(96, 130);
             cmbDamageKind.Size = new Size(114, 30);
             cmbDamageKind.Font = FontBody;
@@ -419,6 +426,7 @@ namespace tmcreator
             cmbDamageKind.Items.AddRange(new object[] { "近战", "远程", "魔法", "召唤", "普通伤害" });
             cmbDamageKind.SelectedIndex = 0;
             StyleComboBox(cmbDamageKind);
+            cmbDamageKind.SelectedIndexChanged += (s, e) => UpdateFieldVisibility();
             _combatSection.Controls.Add(cmbDamageKind);
 
             chkAutoReuse.Text = "自动挥舞";
@@ -458,23 +466,31 @@ namespace tmcreator
             chkConsumeOnUse.BackColor = Color.Transparent;
             _combatSection.Controls.Add(chkConsumeOnUse);
 
-            AddFieldLabel(_combatSection, "弹幕ID", 18, 206, 72);
+            _lblProjectileReference = AddFieldLabel(_combatSection, "弹幕ID", 18, 206, 72);
             txtProjectileId.Location = new Point(96, 202);
             txtProjectileId.Size = new Size(92, 26);
             txtProjectileId.Font = FontBody;
             ConfigureProjectileReferenceTextBox(txtProjectileId);
             _combatSection.Controls.Add(txtProjectileId);
-            AddNumericField(_combatSection, "速度", numProjectileSpeed, 196, 206, 72);
+            _lblProjectileSpeed = AddNumericField(_combatSection, "速度", numProjectileSpeed, 196, 206, 72);
             txtProjectileId.Text = "1";
             numProjectileSpeed.DecimalPlaces = 1;
             numProjectileSpeed.Increment = 0.5M;
             numProjectileSpeed.Maximum = 99;
             numProjectileSpeed.Value = 10;
 
-            AddNumericField(_combatSection, "动作ID", numUseStyleId, 18, 242, 72);
+            _lblUseStyleId = AddNumericField(_combatSection, "动作ID", numUseStyleId, 18, 242, 72);
             numUseStyleId.Minimum = 0;
             numUseStyleId.Maximum = 9999;
             numUseStyleId.Value = 1;
+
+            chkWhipProjectile.Text = "鞭子弹幕";
+            chkWhipProjectile.Location = new Point(196, 246);
+            chkWhipProjectile.Size = new Size(128, 24);
+            chkWhipProjectile.Font = FontBody;
+            chkWhipProjectile.ForeColor = ClrText;
+            chkWhipProjectile.BackColor = Color.Transparent;
+            _combatSection.Controls.Add(chkWhipProjectile);
 
             _formStack?.Controls.Add(_combatSection);
         }
@@ -729,9 +745,9 @@ namespace tmcreator
             };
         }
 
-        private static void AddFieldLabel(Control parent, string text, int x, int y, int width)
+        private static Label AddFieldLabel(Control parent, string text, int x, int y, int width)
         {
-            parent.Controls.Add(new Label
+            var fieldLabel = new Label
             {
                 Text = text,
                 AutoSize = false,
@@ -740,13 +756,16 @@ namespace tmcreator
                 Font = FontBodyBold,
                 ForeColor = ClrSubText,
                 BackColor = Color.Transparent
-            });
+            };
+            parent.Controls.Add(fieldLabel);
+            return fieldLabel;
         }
 
-        private static void AddNumericField(Control parent, string label, NumericUpDown number, int x, int y, int inputWidth)
+        private static Label AddNumericField(Control parent, string label, NumericUpDown number, int x, int y, int inputWidth)
         {
-            AddFieldLabel(parent, label, x, y + 3, 72);
+            var fieldLabel = AddFieldLabel(parent, label, x, y + 3, 72);
             AddNumericBox(parent, number, x + 78, y, inputWidth);
+            return fieldLabel;
         }
 
         private static void AddNumericBox(Control parent, NumericUpDown number, int x, int y, int inputWidth)
@@ -1093,6 +1112,7 @@ namespace tmcreator
         private ModItemData CaptureItemFromForm(FlowScript? flow = null)
         {
             var type = cmbItemType.SelectedIndex >= 0 ? (ItemType)cmbItemType.SelectedIndex : ItemType.Item;
+            bool isProjectile = type == ItemType.Projectile;
 
             return new ModItemData
             {
@@ -1108,14 +1128,14 @@ namespace tmcreator
                 DamageKind = GetSelectedDamageKind(),
                 UseTime = (int)numUseTime.Value,
                 UseAnimation = (int)numUseTime.Value,
-                UseStyleId = (int)numUseStyleId.Value,
+                UseStyleId = isProjectile ? 1 : (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
-                CriticalChance = (int)numCriticalChance.Value,
-                UsesProjectile = chkUsesProjectile.Checked,
-                ProjectileId = GetProjectileIdFallback(txtProjectileId.Text),
-                ProjectileReference = GetProjectileReferenceInput(),
-                ProjectileSpeed = numProjectileSpeed.Value,
-                ConsumeOnUse = chkConsumeOnUse.Checked,
+                CriticalChance = isProjectile ? 0 : (int)numCriticalChance.Value,
+                UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
+                ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
+                ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
+                ProjectileSpeed = isProjectile ? 10 : numProjectileSpeed.Value,
+                ConsumeOnUse = !isProjectile && chkConsumeOnUse.Checked,
                 PickaxePower = (int)numPickaxePower.Value,
                 AxePower = (int)numAxePower.Value,
                 HammerPower = (int)numHammerPower.Value,
@@ -1134,11 +1154,12 @@ namespace tmcreator
                 AccessorySummonCrit = (int)numAccessorySummonCrit.Value,
                 AccessoryDefense = (int)numAccessoryDefense.Value,
                 AccessoryDamageReduction = (int)numAccessoryDamageReduction.Value,
-                AutoReuse = chkAutoReuse.Checked,
-                UseTurn = chkUseTurn.Checked,
+                AutoReuse = !isProjectile && chkAutoReuse.Checked,
+                UseTurn = !isProjectile && chkUseTurn.Checked,
                 TexturePath = type == ItemType.Buff && GetSelectedBuffIconSource() == BuffIconSource.Vanilla ? string.Empty : _selectedTexturePath,
                 IsMultiFrameTexture = chkMultiFrameTexture.Checked,
                 TextureFrameCount = (int)numTextureFrameCount.Value,
+                IsWhipProjectile = IsWhipProjectileOptionAvailable() && chkWhipProjectile.Checked,
                 BuffIconSource = GetSelectedBuffIconSource(),
                 VanillaBuffIconId = (int)numVanillaBuffIconId.Value,
                 Flow = flow,
@@ -1239,7 +1260,7 @@ namespace tmcreator
             }
             else
             {
-                var noTexture = CreatePlainLabel("无贴图", new Point(0, 27), new Size(76, 22), FontSmall, ClrMuted);
+                var noTexture = CreatePlainLabel(item.IsWhipProjectile ? "骨鞭" : "无贴图", new Point(0, 27), new Size(76, 22), FontSmall, item.IsWhipProjectile ? accent : ClrMuted);
                 noTexture.TextAlign = ContentAlignment.MiddleCenter;
                 preview.Controls.Add(noTexture);
             }
@@ -1395,6 +1416,7 @@ namespace tmcreator
             chkAutoReuse.Checked = item.AutoReuse;
             chkUseTurn.Checked = item.UseTurn;
             chkMultiFrameTexture.Checked = item.IsMultiFrameTexture;
+            chkWhipProjectile.Checked = item.IsWhipProjectile;
             SetNumericValue(numTextureFrameCount, item.TextureFrameCount <= 0 ? 1 : item.TextureFrameCount);
             SetBuffIconSource(item.BuffIconSource);
             SetNumericValue(numVanillaBuffIconId, item.VanillaBuffIconId <= 0 ? 1 : item.VanillaBuffIconId);
@@ -1597,6 +1619,10 @@ namespace tmcreator
                         File.Copy(projectile.TexturePath, texFile, true);
                         sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs + {className}.png");
                     }
+                    else if (projectile.IsWhipProjectile)
+                    {
+                        sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs (默认骨鞭贴图)");
+                    }
                     else
                     {
                         sbProjectiles.AppendLine($"  - 导出弹幕: {className}.cs");
@@ -1784,6 +1810,8 @@ namespace tmcreator
 
             if (item.Type == ItemType.Projectile)
             {
+                if (item.IsWhipProjectile)
+                    parts.Add("鞭子弹幕");
                 if (item.Damage > 0) parts.Add($"{item.DamageKindDisplay}伤害 {item.Damage}");
                 if (item.Knockback > 0) parts.Add($"击退 {item.Knockback}");
                 if (item.Flow?.Blocks.Count > 0)
@@ -2101,12 +2129,15 @@ namespace tmcreator
 
         private ProjectDraftData CaptureDraft()
         {
+            var type = cmbItemType.SelectedIndex >= 0 ? (ItemType)cmbItemType.SelectedIndex : ItemType.Item;
+            bool isProjectile = type == ItemType.Projectile;
+
             return new ProjectDraftData
             {
                 Name = txtName.Text.Trim(),
                 DisplayName = txtDisplayName.Text.Trim(),
                 Description = txtDescription.Text.Trim(),
-                Type = (ItemType)cmbItemType.SelectedIndex,
+                Type = type,
                 Width = (int)numWidth.Value,
                 Height = (int)numHeight.Value,
                 Value = (int)numValue.Value,
@@ -2114,14 +2145,14 @@ namespace tmcreator
                 Damage = (int)numDamage.Value,
                 DamageKind = GetSelectedDamageKind(),
                 UseTime = (int)numUseTime.Value,
-                UseStyleId = (int)numUseStyleId.Value,
+                UseStyleId = isProjectile ? 1 : (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
-                CriticalChance = (int)numCriticalChance.Value,
-                UsesProjectile = chkUsesProjectile.Checked,
-                ProjectileId = GetProjectileIdFallback(txtProjectileId.Text),
-                ProjectileReference = GetProjectileReferenceInput(),
-                ProjectileSpeed = numProjectileSpeed.Value,
-                ConsumeOnUse = chkConsumeOnUse.Checked,
+                CriticalChance = isProjectile ? 0 : (int)numCriticalChance.Value,
+                UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
+                ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
+                ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
+                ProjectileSpeed = isProjectile ? 10 : numProjectileSpeed.Value,
+                ConsumeOnUse = !isProjectile && chkConsumeOnUse.Checked,
                 PickaxePower = (int)numPickaxePower.Value,
                 AxePower = (int)numAxePower.Value,
                 HammerPower = (int)numHammerPower.Value,
@@ -2140,11 +2171,12 @@ namespace tmcreator
                 AccessorySummonCrit = (int)numAccessorySummonCrit.Value,
                 AccessoryDefense = (int)numAccessoryDefense.Value,
                 AccessoryDamageReduction = (int)numAccessoryDamageReduction.Value,
-                AutoReuse = chkAutoReuse.Checked,
-                UseTurn = chkUseTurn.Checked,
+                AutoReuse = !isProjectile && chkAutoReuse.Checked,
+                UseTurn = !isProjectile && chkUseTurn.Checked,
                 TexturePath = (ItemType)cmbItemType.SelectedIndex == ItemType.Buff && GetSelectedBuffIconSource() == BuffIconSource.Vanilla ? string.Empty : _selectedTexturePath,
                 IsMultiFrameTexture = chkMultiFrameTexture.Checked,
                 TextureFrameCount = (int)numTextureFrameCount.Value,
+                IsWhipProjectile = IsWhipProjectileOptionAvailable() && chkWhipProjectile.Checked,
                 BuffIconSource = GetSelectedBuffIconSource(),
                 VanillaBuffIconId = (int)numVanillaBuffIconId.Value,
                 Recipe = CloneRecipe(_currentRecipe)
@@ -2193,6 +2225,7 @@ namespace tmcreator
             chkAutoReuse.Checked = draft.AutoReuse;
             chkUseTurn.Checked = draft.UseTurn;
             chkMultiFrameTexture.Checked = draft.IsMultiFrameTexture;
+            chkWhipProjectile.Checked = draft.IsWhipProjectile;
             SetNumericValue(numTextureFrameCount, draft.TextureFrameCount <= 0 ? 1 : draft.TextureFrameCount);
             SetBuffIconSource(draft.BuffIconSource);
             SetNumericValue(numVanillaBuffIconId, draft.VanillaBuffIconId <= 0 ? 1 : draft.VanillaBuffIconId);
@@ -2225,6 +2258,7 @@ namespace tmcreator
                    string.IsNullOrWhiteSpace(txtDescription.Text) &&
                    string.IsNullOrWhiteSpace(_selectedTexturePath) &&
                    _currentRecipe.Ingredients.Count == 0 &&
+                   !chkWhipProjectile.Checked &&
                    numDamage.Value == 0 &&
                    GetAccessoryNumbers().All(number => number.Value == 0) &&
                    numWidth.Value == 20 &&
@@ -2318,6 +2352,7 @@ namespace tmcreator
             item.ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             if (item.TextureFrameCount <= 0)
                 item.TextureFrameCount = 1;
+            item.IsWhipProjectile = item.Type == ItemType.Projectile && item.DamageKind == ModDamageKind.Summon && item.IsWhipProjectile;
         }
 
         private static ModItemData CloneItem(ModItemData item)
@@ -2364,6 +2399,7 @@ namespace tmcreator
                 TexturePath = item.TexturePath,
                 IsMultiFrameTexture = item.IsMultiFrameTexture,
                 TextureFrameCount = item.TextureFrameCount,
+                IsWhipProjectile = item.IsWhipProjectile,
                 BuffIconSource = item.BuffIconSource,
                 VanillaBuffIconId = item.VanillaBuffIconId,
                 Flow = CloneFlow(item.Flow),
@@ -2526,9 +2562,54 @@ namespace tmcreator
             _blockSection.Visible = isBlock;
             _buffSection.Visible = isBuff;
             _recipeSection.Visible = !isBuff && !isProjectile;
+
+            if (_lblCombatUseTime != null)
+                _lblCombatUseTime.Text = isProjectile ? "存在时间" : "使用时间";
+
+            SetControlsVisible(!isProjectile, _lblCombatCritical, numCriticalChance, chkAutoReuse, chkUseTurn, chkUsesProjectile, chkConsumeOnUse, _lblProjectileReference, txtProjectileId, _lblProjectileSpeed, numProjectileSpeed, _lblUseStyleId, numUseStyleId);
+            if (isProjectile)
+            {
+                chkAutoReuse.Checked = false;
+                chkUseTurn.Checked = false;
+                chkUsesProjectile.Checked = false;
+                chkConsumeOnUse.Checked = false;
+                txtProjectileId.Text = "1";
+                numProjectileSpeed.Value = 10;
+                numUseStyleId.Value = 1;
+            }
+
+            bool canUseWhipProjectile = IsWhipProjectileOptionAvailable();
+            chkWhipProjectile.Location = canUseWhipProjectile ? new Point(226, 134) : new Point(196, 246);
+            chkWhipProjectile.Visible = canUseWhipProjectile;
+            if (!canUseWhipProjectile)
+                chkWhipProjectile.Checked = false;
+
+            _combatSection.Height = isProjectile ? 216 : 300;
+            _combatSection.Invalidate();
+
             btnCreate.Text = _editingItem != null ? "保存修改" : isBuff ? "创建 Buff" : isProjectile ? "创建弹幕" : isAccessory ? "创建饰品" : "创建物品";
 
             LayoutShell();
+        }
+
+        private static void SetControlsVisible(bool visible, params Control?[] controls)
+        {
+            foreach (Control? control in controls)
+            {
+                if (control == null)
+                    continue;
+
+                control.Visible = visible;
+                if (control.Parent is Panel host && host.Controls.Count == 1 && ReferenceEquals(host.Controls[0], control))
+                    host.Visible = visible;
+            }
+        }
+
+        private bool IsWhipProjectileOptionAvailable()
+        {
+            return cmbItemType.SelectedIndex >= 0 &&
+                   (ItemType)cmbItemType.SelectedIndex == ItemType.Projectile &&
+                   GetSelectedDamageKind() == ModDamageKind.Summon;
         }
 
         private void UpdateBuffIconVisibility()
@@ -2610,6 +2691,7 @@ namespace tmcreator
             chkAutoReuse.Checked = false;
             chkUseTurn.Checked = false;
             chkMultiFrameTexture.Checked = false;
+            chkWhipProjectile.Checked = false;
             numTextureFrameCount.Value = 1;
             cmbBuffIconSource.SelectedIndex = 0;
             numVanillaBuffIconId.Value = 1;
@@ -3146,7 +3228,9 @@ namespace tmcreator
         {
             var sb = new System.Text.StringBuilder();
             bool hasFlow = HasFlowEvents(item.Flow, ProjectileFlowEventIds, "projectile_update");
-            bool hasAnimation = item.IsMultiFrameTexture && item.TextureFrameCount > 1;
+            bool isWhipProjectile = item.IsWhipProjectile && item.DamageKind == ModDamageKind.Summon;
+            bool usesBoneWhipTexture = isWhipProjectile && string.IsNullOrWhiteSpace(item.TexturePath);
+            bool hasAnimation = !isWhipProjectile && item.IsMultiFrameTexture && item.TextureFrameCount > 1;
 
             if (hasFlow)
             {
@@ -3167,28 +3251,52 @@ namespace tmcreator
             sb.AppendLine("{");
             sb.AppendLine($"    public class {className} : ModProjectile");
             sb.AppendLine("    {");
-            if (hasAnimation)
+            if (usesBoneWhipTexture)
+                sb.AppendLine("        public override string Texture => \"Terraria/Images/Projectile_\" + ProjectileID.BoneWhip;");
+            if (usesBoneWhipTexture && (hasAnimation || isWhipProjectile))
+                sb.AppendLine();
+
+            if (hasAnimation || isWhipProjectile)
             {
                 sb.AppendLine("        public override void SetStaticDefaults()");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            Main.projFrames[Type] = {Math.Max(2, item.TextureFrameCount)};");
+                if (isWhipProjectile)
+                    sb.AppendLine("            ProjectileID.Sets.IsAWhip[Type] = true;");
+                if (hasAnimation)
+                    sb.AppendLine($"            Main.projFrames[Type] = {Math.Max(2, item.TextureFrameCount)};");
                 sb.AppendLine("        }");
                 sb.AppendLine();
             }
 
             sb.AppendLine("        public override void SetDefaults()");
             sb.AppendLine("        {");
-            sb.AppendLine($"            Projectile.width = {item.Width};");
-            sb.AppendLine($"            Projectile.height = {item.Height};");
-            sb.AppendLine("            Projectile.friendly = true;");
-            sb.AppendLine("            Projectile.hostile = false;");
-            sb.AppendLine($"            Projectile.DamageType = {GetDamageClassExpression(item.DamageKind)};");
-            if (item.Damage > 0)
-                sb.AppendLine($"            Projectile.damage = {item.Damage};");
-            sb.AppendLine($"            Projectile.timeLeft = {Math.Max(1, item.UseTime <= 0 ? 600 : item.UseTime * 60)};");
-            sb.AppendLine("            Projectile.penetrate = 1;");
-            if (item.Knockback > 0)
-                sb.AppendLine($"            Projectile.knockBack = {item.Knockback};");
+            if (isWhipProjectile)
+            {
+                sb.AppendLine("            Projectile.DefaultToWhip();");
+                sb.AppendLine($"            Projectile.width = {item.Width};");
+                sb.AppendLine($"            Projectile.height = {item.Height};");
+                sb.AppendLine("            Projectile.DamageType = DamageClass.Summon;");
+                sb.AppendLine("            Projectile.WhipSettings.Segments = 20;");
+                sb.AppendLine("            Projectile.WhipSettings.RangeMultiplier = 1f;");
+                if (item.Damage > 0)
+                    sb.AppendLine($"            Projectile.damage = {item.Damage};");
+                if (item.Knockback > 0)
+                    sb.AppendLine($"            Projectile.knockBack = {item.Knockback};");
+            }
+            else
+            {
+                sb.AppendLine($"            Projectile.width = {item.Width};");
+                sb.AppendLine($"            Projectile.height = {item.Height};");
+                sb.AppendLine("            Projectile.friendly = true;");
+                sb.AppendLine("            Projectile.hostile = false;");
+                sb.AppendLine($"            Projectile.DamageType = {GetDamageClassExpression(item.DamageKind)};");
+                if (item.Damage > 0)
+                    sb.AppendLine($"            Projectile.damage = {item.Damage};");
+                sb.AppendLine($"            Projectile.timeLeft = {Math.Max(1, item.UseTime <= 0 ? 600 : item.UseTime * 60)};");
+                sb.AppendLine("            Projectile.penetrate = 1;");
+                if (item.Knockback > 0)
+                    sb.AppendLine($"            Projectile.knockBack = {item.Knockback};");
+            }
             sb.AppendLine("        }");
 
             if (hasFlow || hasAnimation)

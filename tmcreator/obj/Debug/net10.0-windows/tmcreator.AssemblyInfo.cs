@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("tmcreator")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+31745ab18f707340d5b94db2900a8a0ddf4fb64a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4e5ceb6e2178ed93fa9ba411d9bb77b6dc473b2")]
 [assembly: System.Reflection.AssemblyProductAttribute("tmcreator")]
 [assembly: System.Reflection.AssemblyTitleAttribute("tmcreator")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
