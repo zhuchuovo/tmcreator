@@ -1,6 +1,7 @@
 using Sunny.UI;
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using System.Text.Json;
 using tmcreator.Models;
 using tmcreator.Models.Flow;
 
@@ -28,6 +29,8 @@ namespace tmcreator
         private readonly Label _summaryLabel = new();
         private readonly UIButton _btnSave = new();
         private readonly UIButton _btnClear = new();
+        private readonly UIButton _btnImportFlow = new();
+        private readonly UIButton _btnExportFlow = new();
         private int _canvasContentHeight;
         private int _canvasContentWidth;
         private float _canvasZoom = 1f;
@@ -44,6 +47,7 @@ namespace tmcreator
         private const int DropOverlapThreshold = 80;
         private const int CanvasDragAutoScrollMargin = 56;
         private const int CanvasDragAutoScrollStep = 28;
+        private static readonly JsonSerializerOptions FlowJsonOptions = new() { WriteIndented = true };
         private Point _dragStartScreenPoint;
         private Control? _dragSourceControl;
         private TopLevelDragState? _topLevelDrag;
@@ -312,9 +316,23 @@ namespace tmcreator
                 Close();
             };
 
+            _btnImportFlow.Text = "导入流程";
+            _btnImportFlow.Font = FontBodyBold;
+            _btnImportFlow.Size = new Size(104, 30);
+            StyleButton(_btnImportFlow, Color.FromArgb(92, 116, 236), Color.FromArgb(68, 86, 175));
+            _btnImportFlow.Click += (s, e) => ImportFlow();
+
+            _btnExportFlow.Text = "导出流程";
+            _btnExportFlow.Font = FontBodyBold;
+            _btnExportFlow.Size = new Size(104, 30);
+            StyleButton(_btnExportFlow, Color.FromArgb(62, 142, 241), Color.FromArgb(43, 102, 178));
+            _btnExportFlow.Click += (s, e) => ExportFlow();
+
             _toolbar.BackColor = ClrPanel;
             _toolbar.Controls.Add(_btnClear);
             _toolbar.Controls.Add(_btnSave);
+            _toolbar.Controls.Add(_btnImportFlow);
+            _toolbar.Controls.Add(_btnExportFlow);
             _workspace.Controls.Add(_toolbar);
 
             _canvasViewport.BackColor = ClrCanvas;
@@ -350,6 +368,69 @@ namespace tmcreator
             _workspace.Controls.Add(_canvasScroll);
         }
 
+        private void ExportFlow()
+        {
+            using var dialog = new SaveFileDialog
+            {
+                Title = "导出流程",
+                Filter = "TMCreator 流程|*.tmcreator-flow.json|JSON 文件|*.json|所有文件|*.*",
+                FileName = $"{SanitizeFileName(_item.Name)}.tmcreator-flow.json"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                var flow = new FlowScript { Blocks = _topBlocks.Select(CloneBlock).ToList() };
+                string json = JsonSerializer.Serialize(flow, FlowJsonOptions);
+                File.WriteAllText(dialog.FileName, json, System.Text.Encoding.UTF8);
+                UIMessageBox.Show($"流程已导出：\n{dialog.FileName}");
+            }
+            catch (Exception ex)
+            {
+                UIMessageBox.Show($"导出流程失败：{ex.Message}");
+            }
+        }
+
+        private void ImportFlow()
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "导入流程",
+                Filter = "TMCreator 流程|*.tmcreator-flow.json;*.tmflow.json|JSON 文件|*.json|所有文件|*.*"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                string json = File.ReadAllText(dialog.FileName);
+                var flow = JsonSerializer.Deserialize<FlowScript>(json, FlowJsonOptions);
+                if (flow == null)
+                {
+                    UIMessageBox.Show("流程文件内容为空或格式不正确。");
+                    return;
+                }
+
+                _topBlocks.Clear();
+                _topBlocks.AddRange((flow.Blocks ?? new List<BlockInstance>()).Select(CloneBlock));
+                RebuildCanvas();
+                UIMessageBox.Show("流程已导入，点击「保存流程」后才会写回当前物品。");
+            }
+            catch (Exception ex)
+            {
+                UIMessageBox.Show($"导入流程失败：{ex.Message}");
+            }
+        }
+
+        private static string SanitizeFileName(string name)
+        {
+            string cleaned = string.Join("_", (name ?? string.Empty).Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+            return string.IsNullOrWhiteSpace(cleaned) ? "flow" : cleaned;
+        }
+
         private void LayoutShell()
         {
             const int margin = 18;
@@ -370,11 +451,15 @@ namespace tmcreator
             ResizePaletteItems();
             LayoutPaletteContent();
 
-            _toolbar.SetBounds(_workspace.Width - 230, 18, 206, 42);
-            _btnClear.Location = new Point(0, 4);
-            _btnSave.Location = new Point(98, 4);
+            _toolbar.SetBounds(_workspace.Width - 246, 14, 222, 70);
+            _btnClear.Size = new Size(104, 30);
+            _btnSave.Size = new Size(104, 30);
+            _btnClear.Location = new Point(0, 0);
+            _btnSave.Location = new Point(112, 0);
+            _btnImportFlow.Location = new Point(0, 36);
+            _btnExportFlow.Location = new Point(112, 36);
 
-            _canvasViewport.SetBounds(24, 78, _workspace.Width - 62, _workspace.Height - 102);
+            _canvasViewport.SetBounds(24, 112, _workspace.Width - 62, _workspace.Height - 136);
             _canvasScroll.SetBounds(_canvasViewport.Right + 4, _canvasViewport.Top, 8, _canvasViewport.Height);
             LayoutCanvasContent();
             _summaryLabel.Location = new Point(Math.Max(360, _header.Width - 390), 30);
@@ -787,6 +872,7 @@ namespace tmcreator
                 _topLevelDrag.Started = true;
                 _topLevelDrag.Container.Visible = true;
                 _topLevelDrag.Container.BringToFront();
+                RefreshCanvasDragArea(_topLevelDrag.Container.Bounds);
             }
 
             AutoScrollCanvasDuringDrag();
@@ -800,8 +886,20 @@ namespace tmcreator
 
             Rectangle dirty = Rectangle.Union(_topLevelDrag.Container.Bounds, new Rectangle(next, _topLevelDrag.Container.Size));
             _topLevelDrag.Container.Location = next;
+            _topLevelDrag.Container.BringToFront();
             ExtendCanvasForDrag(new Rectangle(next, _topLevelDrag.Container.Size));
-            _canvas.Invalidate(dirty);
+            RefreshCanvasDragArea(dirty);
+        }
+
+        private void RefreshCanvasDragArea(Rectangle dirty)
+        {
+            dirty.Inflate(Math.Max(12, Zoom(12)), Math.Max(12, Zoom(12)));
+            dirty.Intersect(_canvas.ClientRectangle);
+            if (dirty.IsEmpty)
+                return;
+
+            _canvas.Invalidate(dirty, true);
+            _canvas.Update();
         }
 
         private void AutoScrollCanvasDuringDrag()
@@ -856,12 +954,15 @@ namespace tmcreator
                 }
                 else
                 {
+                    Rectangle dirty = _topLevelDrag.Container.Bounds;
                     _topLevelDrag.Container.Location = _topLevelDrag.OriginalLocation;
+                    RefreshCanvasDragArea(Rectangle.Union(dirty, _topLevelDrag.Container.Bounds));
                 }
             }
             finally
             {
                 _topLevelDrag.Source.Capture = false;
+                Rectangle dirty = _topLevelDrag.Container.Bounds;
                 if (_topLevelDrag.IsDetachedPreview)
                 {
                     var background = _topLevelDrag.Container.BackgroundImage;
@@ -871,6 +972,7 @@ namespace tmcreator
                 }
 
                 _topLevelDrag = null;
+                RefreshCanvasDragArea(dirty);
             }
         }
 

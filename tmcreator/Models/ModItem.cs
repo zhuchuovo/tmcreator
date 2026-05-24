@@ -58,6 +58,9 @@ public class ModItemData
     public int UseStyleId { get; set; } = 1;
     public int Knockback { get; set; }
     public int CriticalChance { get; set; } = 4;
+    public int ManaCost { get; set; }
+    public bool UsesAmmo { get; set; }
+    public string AmmoType { get; set; } = string.Empty;
     public bool UsesProjectile { get; set; }
     public int ProjectileId { get; set; } = 1;
     public string ProjectileReference { get; set; } = string.Empty;

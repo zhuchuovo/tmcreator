@@ -77,7 +77,7 @@ namespace tmcreator
             Controls.Add(_txtDescription);
 
             AddLabel("build 版本号", 24, 242);
-            ConfigureInput(_txtVersion, 132, 236, 160, 32, string.IsNullOrWhiteSpace(buildVersion) ? "0.1.0" : buildVersion);
+            ConfigureInput(_txtVersion, 132, 236, 160, 32, string.IsNullOrWhiteSpace(buildVersion) ? "1.3" : buildVersion);
             Controls.Add(_txtVersion);
 
             AddLabel("作者", 322, 242);
@@ -137,7 +137,7 @@ namespace tmcreator
 
         public string ProjectName => _txtName.Text.Trim();
         public string ProjectDescription => _txtDescription.Text.Trim();
-        public string BuildVersion => string.IsNullOrWhiteSpace(_txtVersion.Text) ? "0.1.0" : _txtVersion.Text.Trim();
+        public string BuildVersion => string.IsNullOrWhiteSpace(_txtVersion.Text) ? "1.3" : _txtVersion.Text.Trim();
         public string BuildAuthor => _txtAuthor.Text.Trim();
         public string BuildHomepage => _txtHomepage.Text.Trim();
         public string ProjectIconPath => _txtIconPath.Text.Trim();

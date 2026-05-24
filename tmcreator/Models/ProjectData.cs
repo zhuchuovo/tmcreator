@@ -8,7 +8,7 @@ public class ProjectData
     public string ProjectName { get; set; } = "未命名工程";
     public string ProjectDescription { get; set; } = string.Empty;
     public string ProjectIconPath { get; set; } = string.Empty;
-    public string BuildVersion { get; set; } = "0.1.0";
+    public string BuildVersion { get; set; } = "1.3";
     public string BuildAuthor { get; set; } = string.Empty;
     public string BuildHomepage { get; set; } = string.Empty;
     public List<ModItemData> Items { get; set; } = new();
@@ -28,6 +28,9 @@ public class ProjectDraftData
     public int UseStyleId { get; set; } = 1;
     public int Knockback { get; set; }
     public int CriticalChance { get; set; } = 4;
+    public int ManaCost { get; set; }
+    public bool UsesAmmo { get; set; }
+    public string AmmoType { get; set; } = string.Empty;
     public bool UsesProjectile { get; set; }
     public int ProjectileId { get; set; } = 1;
     public string ProjectileReference { get; set; } = string.Empty;

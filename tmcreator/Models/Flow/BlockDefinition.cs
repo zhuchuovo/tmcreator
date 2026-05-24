@@ -182,6 +182,11 @@ public static class BlockRegistry
                 new() { Name = "damage_type", Label = "职业", Type = ParamType.DamageType, DefaultValue = "generic" },
                 new() { Name = "duration", Label = "持续(秒)", Type = ParamType.Number, DefaultValue = "5" }
             }},
+        new() { Id = "if_key_down", Name = "摁下按键时执行", Category = BlockCategory.Action,
+            HasTrueBranch = true, HasFalseBranch = false, TrueLabel = "执行",
+            Params = {
+                new() { Name = "key", Label = "按键", Type = ParamType.Text, DefaultValue = "F" }
+            }},
         new() { Id = "create_variable", Name = "创建变量", Category = BlockCategory.Action,
             Params = {
                 new() { Name = "name", Label = "变量名", Type = ParamType.Text, DefaultValue = "myValue" },

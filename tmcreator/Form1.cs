@@ -33,6 +33,8 @@ namespace tmcreator
         private Label? _lblProjectileReference;
         private Label? _lblProjectileSpeed;
         private Label? _lblUseStyleId;
+        private Label? _lblManaCost;
+        private Label? _lblAmmoType;
         private Label? _rightSubtitleLabel;
         private Label? _emptyStateLabel;
         private readonly UIComboBox cmbDamageKind = new();
@@ -41,10 +43,13 @@ namespace tmcreator
         private readonly UICheckBox chkConsumeOnUse = new();
         private readonly UICheckBox chkMultiFrameTexture = new();
         private readonly UICheckBox chkWhipProjectile = new();
+        private readonly UICheckBox chkUsesAmmo = new();
         private readonly System.Windows.Forms.TextBox txtProjectileId = new();
+        private readonly System.Windows.Forms.TextBox txtAmmoType = new();
         private readonly NumericUpDown numProjectileSpeed = new();
         private readonly NumericUpDown numVanillaBuffIconId = new();
         private readonly NumericUpDown numUseStyleId = new();
+        private readonly NumericUpDown numManaCost = new();
         private readonly NumericUpDown numTextureFrameCount = new();
         private readonly NumericUpDown numAccessoryMeleeDamage = new();
         private readonly NumericUpDown numAccessoryMagicDamage = new();
@@ -66,11 +71,12 @@ namespace tmcreator
         private readonly UIButton btnOpenProject = new();
         private readonly UIButton btnSaveProject = new();
         private readonly UIButton btnRenameProject = new();
+        private readonly UIButton btnImportBlock = new();
         private RecipeData _currentRecipe = new();
         private string _projectName = "未命名工程";
         private string _projectDescription = string.Empty;
         private string _projectIconPath = string.Empty;
-        private string _buildVersion = "0.1.0";
+        private string _buildVersion = "1.3";
         private string _buildAuthor = string.Empty;
         private string _buildHomepage = string.Empty;
         private string? _projectFilePath;
@@ -492,6 +498,28 @@ namespace tmcreator
             chkWhipProjectile.BackColor = Color.Transparent;
             _combatSection.Controls.Add(chkWhipProjectile);
 
+            _lblManaCost = AddNumericField(_combatSection, "魔力消耗", numManaCost, 18, 278, 72);
+            numManaCost.Minimum = 0;
+            numManaCost.Maximum = 9999;
+            numManaCost.Value = 0;
+
+            chkUsesAmmo.Text = "消耗弹药";
+            chkUsesAmmo.Location = new Point(196, 282);
+            chkUsesAmmo.Size = new Size(128, 24);
+            chkUsesAmmo.Font = FontBody;
+            chkUsesAmmo.ForeColor = ClrText;
+            chkUsesAmmo.BackColor = Color.Transparent;
+            chkUsesAmmo.CheckedChanged += (s, e) => UpdateFieldVisibility();
+            _combatSection.Controls.Add(chkUsesAmmo);
+
+            _lblAmmoType = AddFieldLabel(_combatSection, "弹药类型", 18, 318, 72);
+            txtAmmoType.Location = new Point(96, 314);
+            txtAmmoType.Size = new Size(196, 26);
+            txtAmmoType.Font = FontBody;
+            ConfigureAmmoTypeTextBox(txtAmmoType);
+            txtAmmoType.Text = "Bullet";
+            _combatSection.Controls.Add(txtAmmoType);
+
             _formStack?.Controls.Add(_combatSection);
         }
 
@@ -690,6 +718,14 @@ namespace tmcreator
             btnExport.Click += ExportModern_Click;
             pnlRight.Controls.Add(btnExport);
 
+            btnImportBlock.Text = "导入块";
+            btnImportBlock.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+            btnImportBlock.Size = new Size(104, 36);
+            StyleButton(btnImportBlock, Color.FromArgb(92, 116, 236), Color.FromArgb(68, 86, 175));
+            btnImportBlock.Click -= ImportBlock_Click;
+            btnImportBlock.Click += ImportBlock_Click;
+            pnlRight.Controls.Add(btnImportBlock);
+
             flowItems.AutoScroll = true;
             flowItems.FlowDirection = FlowDirection.TopDown;
             flowItems.WrapContents = false;
@@ -860,6 +896,18 @@ namespace tmcreator
             UpdateProjectileReferenceOptions();
         }
 
+        private static void ConfigureAmmoTypeTextBox(System.Windows.Forms.TextBox textBox)
+        {
+            textBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            textBox.AutoCompleteSource = AutoCompleteSource.CustomSource;
+            textBox.BorderStyle = BorderStyle.FixedSingle;
+            textBox.BackColor = ClrInputBg;
+            textBox.ForeColor = ClrText;
+            var autoComplete = new AutoCompleteStringCollection();
+            autoComplete.AddRange(new[] { "Arrow", "Bullet", "Rocket", "Dart", "Solution", "Sand", "Gel", "FallenStar", "None" });
+            textBox.AutoCompleteCustomSource = autoComplete;
+        }
+
         private void UpdateProjectileReferenceOptions()
         {
             var references = _items
@@ -904,6 +952,82 @@ namespace tmcreator
                 return Math.Max(0, projectileId).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             return trimmed;
+        }
+
+        private static string NormalizeAmmoType(string? ammoType)
+        {
+            string value = ammoType?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(value) || value.Equals("None", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            return value;
+        }
+
+        private static string GetAmmoExpression(string? ammoType)
+        {
+            string value = NormalizeAmmoType(ammoType);
+            if (string.IsNullOrWhiteSpace(value))
+                return "AmmoID.Bullet";
+
+            if (int.TryParse(value, out int id))
+                return Math.Max(0, id).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            string normalized = value;
+            int spaceIndex = normalized.IndexOf(' ');
+            if (spaceIndex >= 0)
+                normalized = normalized[..spaceIndex];
+            if (normalized.StartsWith("AmmoID.", StringComparison.OrdinalIgnoreCase))
+                normalized = normalized["AmmoID.".Length..];
+
+            normalized = normalized switch
+            {
+                "箭" => "Arrow",
+                "子弹" => "Bullet",
+                "火箭" => "Rocket",
+                "飞镖" => "Dart",
+                "溶液" => "Solution",
+                "沙" => "Sand",
+                "凝胶" => "Gel",
+                "坠星" or "落星" => "FallenStar",
+                _ => normalized
+            };
+
+            string identifier = SanitizeIdentifier(normalized);
+            return string.IsNullOrWhiteSpace(identifier) ? "AmmoID.Bullet" : $"AmmoID.{identifier}";
+        }
+
+        private static string NormalizeKeyboardKeyName(string? key)
+        {
+            string value = key?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+                return "F";
+
+            return value switch
+            {
+                "空格" => "Space",
+                "回车" => "Enter",
+                "上" => "Up",
+                "下" => "Down",
+                "左" => "Left",
+                "右" => "Right",
+                "左Shift" or "左shift" => "LeftShift",
+                "右Shift" or "右shift" => "RightShift",
+                "左Ctrl" or "左ctrl" => "LeftControl",
+                "右Ctrl" or "右ctrl" => "RightControl",
+                _ => value
+            };
+        }
+
+        private static string SanitizeIdentifier(string value)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (char c in value)
+            {
+                if (char.IsLetterOrDigit(c) || c == '_')
+                    sb.Append(c);
+            }
+
+            return sb.ToString();
         }
 
         private bool IsDuplicateInternalName(string name, ModItemData? allowedItem = null)
@@ -990,8 +1114,9 @@ namespace tmcreator
             _formScrollBar.BringToFront();
 
             btnExport.Location = new Point(Math.Max(24, pnlRight.Width - btnExport.Width - 24), 24);
+            btnImportBlock.Location = new Point(Math.Max(24, btnExport.Left - btnImportBlock.Width - 12), 24);
             if (_rightSubtitleLabel != null)
-                _rightSubtitleLabel.Width = Math.Max(260, btnExport.Left - _rightSubtitleLabel.Left - 24);
+                _rightSubtitleLabel.Width = Math.Max(260, btnImportBlock.Left - _rightSubtitleLabel.Left - 24);
             flowItems.SetBounds(24, 84, pnlRight.Width - 48, pnlRight.Height - 108);
             _emptyStateLabel.Bounds = flowItems.Bounds;
             _emptyStateLabel.BringToFront();
@@ -1131,6 +1256,9 @@ namespace tmcreator
                 UseStyleId = isProjectile ? 1 : (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = isProjectile ? 0 : (int)numCriticalChance.Value,
+                ManaCost = type == ItemType.Weapon ? (int)numManaCost.Value : 0,
+                UsesAmmo = type == ItemType.Weapon && chkUsesAmmo.Checked,
+                AmmoType = type == ItemType.Weapon && chkUsesAmmo.Checked ? NormalizeAmmoType(txtAmmoType.Text) : string.Empty,
                 UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
                 ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
                 ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
@@ -1281,7 +1409,7 @@ namespace tmcreator
             {
                 Text = item.DisplayName,
                 Location = new Point(112, 44),
-                Size = new Size(Math.Max(120, card.Width - 260), 24),
+                Size = new Size(Math.Max(120, card.Width - 340), 24),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold, GraphicsUnit.Point),
                 ForeColor = ClrText,
@@ -1293,7 +1421,7 @@ namespace tmcreator
             {
                 Text = item.Name,
                 Location = new Point(112, 68),
-                Size = new Size(Math.Max(120, card.Width - 260), 18),
+                Size = new Size(Math.Max(120, card.Width - 340), 18),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = FontSmall,
                 ForeColor = ClrMuted,
@@ -1305,7 +1433,7 @@ namespace tmcreator
             {
                 Text = BuildStatsTextModern(item),
                 Location = new Point(112, 91),
-                Size = new Size(Math.Max(220, card.Width - 260), 22),
+                Size = new Size(Math.Max(220, card.Width - 340), 22),
                 Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontSmall,
                 ForeColor = ClrSubText,
@@ -1316,8 +1444,8 @@ namespace tmcreator
             var editBtn = new UIButton
             {
                 Text = "编辑",
-                Size = new Size(88, 28),
-                Location = new Point(card.Width - 112, 18),
+                Size = new Size(86, 28),
+                Location = new Point(card.Width - 204, 18),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontBodyBold,
                 Tag = item
@@ -1329,8 +1457,8 @@ namespace tmcreator
             var flowBtn = new UIButton
             {
                 Text = "流程",
-                Size = new Size(88, 28),
-                Location = new Point(card.Width - 112, 50),
+                Size = new Size(86, 28),
+                Location = new Point(card.Width - 112, 18),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontBodyBold,
                 Tag = item
@@ -1343,11 +1471,24 @@ namespace tmcreator
             };
             card.Controls.Add(flowBtn);
 
+            var exportBtn = new UIButton
+            {
+                Text = "导出块",
+                Size = new Size(86, 28),
+                Location = new Point(card.Width - 204, 52),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Font = FontBodyBold,
+                Tag = item
+            };
+            StyleButton(exportBtn, Color.FromArgb(92, 116, 236), Color.FromArgb(68, 86, 175));
+            exportBtn.Click += (s, e) => ExportItemBlock(item);
+            card.Controls.Add(exportBtn);
+
             var deleteBtn = new UIButton
             {
                 Text = "删除",
-                Size = new Size(88, 28),
-                Location = new Point(card.Width - 112, 82),
+                Size = new Size(86, 28),
+                Location = new Point(card.Width - 112, 52),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Font = FontBodyBold,
                 Tag = item
@@ -1392,6 +1533,9 @@ namespace tmcreator
             SetNumericValue(numUseStyleId, item.UseStyleId <= 0 ? (item.UsesProjectile ? 5 : 1) : item.UseStyleId);
             SetNumericValue(numKnockback, item.Knockback);
             SetNumericValue(numCriticalChance, item.CriticalChance);
+            SetNumericValue(numManaCost, item.ManaCost);
+            chkUsesAmmo.Checked = item.UsesAmmo;
+            txtAmmoType.Text = string.IsNullOrWhiteSpace(item.AmmoType) ? "Bullet" : item.AmmoType;
             chkConsumeOnUse.Checked = item.ConsumeOnUse;
             txtProjectileId.Text = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             SetNumericValue(numProjectileSpeed, item.ProjectileSpeed);
@@ -1463,6 +1607,122 @@ namespace tmcreator
             {
                 UIMessageBox.Show($"导出失败: {ex.Message}");
             }
+        }
+
+        private void ImportBlock_Click(object? sender, EventArgs e)
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "导入块",
+                Filter = "TMCreator 块|*.tmcreator-block.json;*.tmblock.json|JSON 文件|*.json|所有文件|*.*"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                ModItemData item = ReadItemBlock(dialog.FileName);
+                string sourceDir = Path.GetDirectoryName(dialog.FileName) ?? AppContext.BaseDirectory;
+                NormalizeItem(item, sourceDir);
+                item.Name = GetUniqueInternalName(item.Name);
+                if (string.IsNullOrWhiteSpace(item.DisplayName))
+                    item.DisplayName = item.Name;
+
+                _items.Add(item);
+                AddItemCardModern(item);
+                UpdateProjectileReferenceOptions();
+                UpdateEmptyState();
+                UIMessageBox.Show($"已导入块：{item.DisplayName}");
+            }
+            catch (Exception ex)
+            {
+                UIMessageBox.Show($"导入块失败：{ex.Message}");
+            }
+        }
+
+        private void ExportItemBlock(ModItemData item)
+        {
+            using var dialog = new SaveFileDialog
+            {
+                Title = "导出块",
+                Filter = "TMCreator 块|*.tmcreator-block.json|JSON 文件|*.json|所有文件|*.*",
+                FileName = $"{SanitizeFileName(item.Name)}.tmcreator-block.json"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                var blockFile = CreateItemBlockFile(item);
+                string json = JsonSerializer.Serialize(blockFile, ProjectJsonOptions);
+                File.WriteAllText(dialog.FileName, json, System.Text.Encoding.UTF8);
+                UIMessageBox.Show($"已导出块：\n{dialog.FileName}");
+            }
+            catch (Exception ex)
+            {
+                UIMessageBox.Show($"导出块失败：{ex.Message}");
+            }
+        }
+
+        private static ModItemBlockFile CreateItemBlockFile(ModItemData item)
+        {
+            var blockItem = CloneItem(item);
+            var blockFile = new ModItemBlockFile { Item = blockItem };
+
+            if (!string.IsNullOrWhiteSpace(item.TexturePath) && File.Exists(item.TexturePath))
+            {
+                blockFile.TextureExtension = Path.GetExtension(item.TexturePath);
+                blockFile.TextureBase64 = Convert.ToBase64String(File.ReadAllBytes(item.TexturePath));
+                blockItem.TexturePath = Path.GetFileName(item.TexturePath);
+            }
+
+            return blockFile;
+        }
+
+        private static ModItemData ReadItemBlock(string fileName)
+        {
+            string json = File.ReadAllText(fileName);
+            var blockFile = JsonSerializer.Deserialize<ModItemBlockFile>(json, ProjectJsonOptions);
+            ModItemData? item = blockFile?.Item;
+
+            if (item == null)
+                item = JsonSerializer.Deserialize<ModItemData>(json, ProjectJsonOptions);
+            if (item == null)
+                throw new InvalidOperationException("块文件内容为空或格式不正确。");
+
+            if (blockFile != null && !string.IsNullOrWhiteSpace(blockFile.TextureBase64))
+                item.TexturePath = WriteImportedBlockTexture(item.Name, blockFile.TextureExtension, blockFile.TextureBase64);
+
+            return item;
+        }
+
+        private static string WriteImportedBlockTexture(string itemName, string? extension, string base64)
+        {
+            string safeExtension = string.IsNullOrWhiteSpace(extension) ? ".png" : extension;
+            if (!safeExtension.StartsWith('.'))
+                safeExtension = "." + safeExtension;
+
+            string dir = Path.Combine(Path.GetTempPath(), "tmcreator-imported-blocks");
+            Directory.CreateDirectory(dir);
+            string target = Path.Combine(dir, $"{SanitizeFileName(itemName)}_{Guid.NewGuid():N}{safeExtension}");
+            File.WriteAllBytes(target, Convert.FromBase64String(base64));
+            return target;
+        }
+
+        private string GetUniqueInternalName(string name)
+        {
+            string baseName = string.IsNullOrWhiteSpace(name) ? "ImportedBlock" : name.Trim();
+            string candidate = baseName;
+            int index = 2;
+            while (_items.Any(item => string.Equals(item.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                candidate = $"{baseName}_{index}";
+                index++;
+            }
+
+            return candidate;
         }
 
         private bool ValidateModernExportReady()
@@ -1804,6 +2064,8 @@ namespace tmcreator
                 parts.Add($"动作 {item.UseStyleId}");
                 if (item.Knockback > 0) parts.Add($"击退 {item.Knockback}");
                 if (item.CriticalChance > 0) parts.Add($"暴击 {item.CriticalChance}%");
+                if (item.ManaCost > 0) parts.Add($"魔力 {item.ManaCost}");
+                if (item.UsesAmmo) parts.Add($"弹药 {NormalizeAmmoType(item.AmmoType)}");
                 if (item.UsesProjectile) parts.Add($"弹幕 {NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId)} / 速度 {item.ProjectileSpeed:0.#}");
                 if (item.ConsumeOnUse) parts.Add("使用消耗");
             }
@@ -2057,7 +2319,7 @@ namespace tmcreator
             _projectName = string.IsNullOrWhiteSpace(projectName) ? "未命名工程" : projectName.Trim();
             _projectDescription = string.Empty;
             _projectIconPath = string.Empty;
-            _buildVersion = "0.1.0";
+            _buildVersion = "1.3";
             _buildAuthor = string.Empty;
             _buildHomepage = string.Empty;
             _projectFilePath = null;
@@ -2076,7 +2338,7 @@ namespace tmcreator
             _projectName = string.IsNullOrWhiteSpace(project.ProjectName) ? "未命名工程" : project.ProjectName.Trim();
             _projectDescription = project.ProjectDescription ?? string.Empty;
             _projectIconPath = ResolveProjectPath(project.ProjectIconPath, projectDir);
-            _buildVersion = string.IsNullOrWhiteSpace(project.BuildVersion) ? "0.1.0" : project.BuildVersion.Trim();
+            _buildVersion = string.IsNullOrWhiteSpace(project.BuildVersion) ? "1.3" : project.BuildVersion.Trim();
             _buildAuthor = project.BuildAuthor ?? string.Empty;
             _buildHomepage = project.BuildHomepage ?? string.Empty;
             _projectFilePath = filePath;
@@ -2148,6 +2410,9 @@ namespace tmcreator
                 UseStyleId = isProjectile ? 1 : (int)numUseStyleId.Value,
                 Knockback = (int)numKnockback.Value,
                 CriticalChance = isProjectile ? 0 : (int)numCriticalChance.Value,
+                ManaCost = type == ItemType.Weapon ? (int)numManaCost.Value : 0,
+                UsesAmmo = type == ItemType.Weapon && chkUsesAmmo.Checked,
+                AmmoType = type == ItemType.Weapon && chkUsesAmmo.Checked ? NormalizeAmmoType(txtAmmoType.Text) : string.Empty,
                 UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
                 ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
                 ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
@@ -2200,6 +2465,9 @@ namespace tmcreator
             SetNumericValue(numUseStyleId, draft.UseStyleId <= 0 ? 1 : draft.UseStyleId);
             SetNumericValue(numKnockback, draft.Knockback);
             SetNumericValue(numCriticalChance, draft.CriticalChance);
+            SetNumericValue(numManaCost, draft.ManaCost);
+            chkUsesAmmo.Checked = draft.UsesAmmo;
+            txtAmmoType.Text = string.IsNullOrWhiteSpace(draft.AmmoType) ? "Bullet" : draft.AmmoType;
             chkUsesProjectile.Checked = draft.UsesProjectile;
             chkConsumeOnUse.Checked = draft.ConsumeOnUse;
             txtProjectileId.Text = NormalizeProjectileReference(draft.ProjectileReference, draft.ProjectileId);
@@ -2350,6 +2618,13 @@ namespace tmcreator
             if (item.UseStyleId <= 0)
                 item.UseStyleId = item.UsesProjectile ? 5 : 1;
             item.ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
+            item.AmmoType = NormalizeAmmoType(item.AmmoType);
+            if (item.Type != ItemType.Weapon)
+            {
+                item.ManaCost = 0;
+                item.UsesAmmo = false;
+                item.AmmoType = string.Empty;
+            }
             if (item.TextureFrameCount <= 0)
                 item.TextureFrameCount = 1;
             item.IsWhipProjectile = item.Type == ItemType.Projectile && item.DamageKind == ModDamageKind.Summon && item.IsWhipProjectile;
@@ -2369,6 +2644,9 @@ namespace tmcreator
                 UseStyleId = item.UseStyleId,
                 Knockback = item.Knockback,
                 CriticalChance = item.CriticalChance,
+                ManaCost = item.ManaCost,
+                UsesAmmo = item.UsesAmmo,
+                AmmoType = item.AmmoType,
                 UsesProjectile = item.UsesProjectile,
                 ProjectileId = item.ProjectileId,
                 ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId),
@@ -2578,13 +2856,24 @@ namespace tmcreator
                 numUseStyleId.Value = 1;
             }
 
+            bool showWeaponResourceFields = isWeapon;
+            bool showAmmoType = showWeaponResourceFields && chkUsesAmmo.Checked;
+            SetControlsVisible(showWeaponResourceFields, _lblManaCost, numManaCost, chkUsesAmmo);
+            SetControlsVisible(showAmmoType, _lblAmmoType, txtAmmoType);
+            if (!showWeaponResourceFields)
+            {
+                numManaCost.Value = 0;
+                chkUsesAmmo.Checked = false;
+                txtAmmoType.Text = "Bullet";
+            }
+
             bool canUseWhipProjectile = IsWhipProjectileOptionAvailable();
             chkWhipProjectile.Location = canUseWhipProjectile ? new Point(226, 134) : new Point(196, 246);
             chkWhipProjectile.Visible = canUseWhipProjectile;
             if (!canUseWhipProjectile)
                 chkWhipProjectile.Checked = false;
 
-            _combatSection.Height = isProjectile ? 216 : 300;
+            _combatSection.Height = isProjectile ? 216 : showWeaponResourceFields ? 372 : 300;
             _combatSection.Invalidate();
 
             btnCreate.Text = _editingItem != null ? "保存修改" : isBuff ? "创建 Buff" : isProjectile ? "创建弹幕" : isAccessory ? "创建饰品" : "创建物品";
@@ -2674,6 +2963,9 @@ namespace tmcreator
             numUseStyleId.Value = 1;
             numKnockback.Value = 0;
             numCriticalChance.Value = 4;
+            numManaCost.Value = 0;
+            chkUsesAmmo.Checked = false;
+            txtAmmoType.Text = "Bullet";
             chkUsesProjectile.Checked = false;
             chkConsumeOnUse.Checked = false;
             txtProjectileId.Text = "1";
@@ -3085,6 +3377,10 @@ namespace tmcreator
                     sb.AppendLine($"            Item.damage = {item.Damage};");
                     sb.AppendLine($"            Item.DamageType = {GetDamageClassExpression(item.DamageKind)};");
                 }
+                if (item.Type == ItemType.Weapon && item.ManaCost > 0)
+                    sb.AppendLine($"            Item.mana = {item.ManaCost};");
+                if (item.Type == ItemType.Weapon && item.UsesAmmo)
+                    sb.AppendLine($"            Item.useAmmo = {GetAmmoExpression(item.AmmoType)};");
                 sb.AppendLine($"            Item.useTime = {item.UseTime};");
                 sb.AppendLine($"            Item.useAnimation = {item.UseAnimation};");
                 sb.AppendLine($"            Item.useStyle = {GetUseStyleId(item)};");
@@ -3905,6 +4201,16 @@ namespace tmcreator
                     AppendLine(sb, indent, $"Flow_ForEachPlayer(player, targetPlayer, \"{EscapeString(selector)}\", flowPlayer => Flow_AddTemporaryPlayerStat(flowPlayer, \"{EscapeString(statKey)}\", {signedAmount}, {duration} * 60));");
                     break;
                 }
+                case "if_key_down":
+                {
+                    string key = NormalizeKeyboardKeyName(GetParamString(block, "key", "F"));
+                    string keyVar = context.Next("flowKey");
+                    AppendLine(sb, indent, $"if (System.Enum.TryParse<Microsoft.Xna.Framework.Input.Keys>(\"{EscapeString(key)}\", true, out var {keyVar}) && Microsoft.Xna.Framework.Input.Keyboard.GetState().IsKeyDown({keyVar}))");
+                    AppendLine(sb, indent, "{");
+                    AppendFlowStatements(sb, block.TrueBranch, indent + 4, context);
+                    AppendLine(sb, indent, "}");
+                    break;
+                }
                 case "create_variable":
                 {
                     string name = GetParamString(block, "name", "myValue");
@@ -4579,6 +4885,14 @@ namespace tmcreator
                 _index++;
                 return $"{prefix}{_index}";
             }
+        }
+
+        private sealed class ModItemBlockFile
+        {
+            public int Version { get; set; } = 1;
+            public ModItemData? Item { get; set; }
+            public string TextureExtension { get; set; } = string.Empty;
+            public string TextureBase64 { get; set; } = string.Empty;
         }
 
         private static string GetRarityLine(int rarity)
