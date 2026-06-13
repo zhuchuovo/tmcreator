@@ -1,20 +1,24 @@
 {
   "format": 1,
   "restore": {
-    "G:\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj": {}
+    "D:\\code\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj": {}
   },
   "projects": {
-    "G:\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj": {
+    "D:\\code\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "G:\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj",
+        "projectUniqueName": "D:\\code\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj",
         "projectName": "tmcreator",
-        "projectPath": "G:\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj",
-        "packagesPath": "C:\\Users\\zhuchuovo\\.nuget\\packages\\",
-        "outputPath": "G:\\csharp\\tmcreator\\tmcreator\\obj\\",
+        "projectPath": "D:\\code\\csharp\\tmcreator\\tmcreator\\tmcreator.csproj",
+        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
+        "outputPath": "D:\\code\\csharp\\tmcreator\\tmcreator\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\code\\Editor_ide\\VS2026\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "C:\\Users\\zhuchuovo\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
@@ -22,6 +26,7 @@
         ],
         "sources": {
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -41,7 +46,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.200"
+        "SdkAnalysisLevel": "10.0.300"
       },
       "frameworks": {
         "net10.0-windows": {
@@ -72,7 +77,7 @@
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.204/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.300/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",

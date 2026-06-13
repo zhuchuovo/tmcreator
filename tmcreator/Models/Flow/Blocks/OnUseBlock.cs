@@ -1,0 +1,12 @@
+namespace tmcreator.Models.Flow;
+
+public static class OnUseBlock
+{
+    public static BlockDefinition Create() => new()
+    {
+        Id = "on_use",
+        Name = "当使用物品时",
+        Category = BlockCategory.Event,
+        EventComment = "When this item is used"
+    };
+}
