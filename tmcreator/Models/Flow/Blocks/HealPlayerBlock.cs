@@ -11,7 +11,8 @@ public static class HealPlayerBlock
         {
             new() { Name = "amount", Label = "治疗量", Type = ParamType.Number, DefaultValue = "20" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.HealPlayer }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

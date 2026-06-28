@@ -11,7 +11,8 @@ public static class SetProjectileSpeedBlock
         {
             new() { Name = "speed", Label = "速度", Type = ParamType.Number, DefaultValue = "10" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.SetProjectileSpeed }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

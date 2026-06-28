@@ -16,7 +16,8 @@ public static class IfValueEqualBlock
             new() { Name = "compare", Label = "比较符", Type = ParamType.Dropdown, DefaultValue = "=", Options = new[] { "=", "!=", ">", "<", ">=", "<=" } },
             new() { Name = "right", Label = "右值", Type = ParamType.Number, DefaultValue = "0" }
         },
-        BuildCondition = Build
+        BuildCondition = Build,
+        RequiredHelpers = { FlowHelperNames.CompareFloat }
     };
 
     private static string Build(FlowGenerationContext context, BlockInstance block)

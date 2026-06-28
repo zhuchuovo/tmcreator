@@ -16,7 +16,8 @@ public static class IfBuffBlock
             new() { Name = "target", Label = "目标", Type = ParamType.Target, DefaultValue = "npc" },
             new() { Name = "buff", Label = "Buff", Type = ParamType.Buff, DefaultValue = "1" }
         },
-        BuildCondition = Build
+        BuildCondition = Build,
+        RequiredHelpers = { FlowHelperNames.HasBuff }
     };
 
     private static string Build(FlowGenerationContext context, BlockInstance block)

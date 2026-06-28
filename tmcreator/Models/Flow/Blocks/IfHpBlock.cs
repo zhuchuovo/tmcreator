@@ -17,7 +17,8 @@ public static class IfHpBlock
             new() { Name = "compare", Label = "比较", Type = ParamType.Dropdown, DefaultValue = "<", Options = new[] { "<", ">", "=", "≥", "≤" } },
             new() { Name = "value", Label = "数值", Type = ParamType.Number, DefaultValue = "50" }
         },
-        BuildCondition = Build
+        BuildCondition = Build,
+        RequiredHelpers = { FlowHelperNames.GetLife, FlowHelperNames.Compare }
     };
 
     private static string Build(FlowGenerationContext context, BlockInstance block)

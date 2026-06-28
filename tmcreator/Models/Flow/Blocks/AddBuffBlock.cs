@@ -13,7 +13,8 @@ public static class AddBuffBlock
             new() { Name = "buff", Label = "Buff类型", Type = ParamType.Buff, DefaultValue = "1" },
             new() { Name = "duration", Label = "持续时间(秒)", Type = ParamType.Number, DefaultValue = "60" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

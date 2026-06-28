@@ -11,7 +11,8 @@ public static class ValueNpcHpBlock
         {
             new() { Name = "target", Label = "目标", Type = ParamType.Target, DefaultValue = "npc" }
         },
-        BuildValueExpression = BuildExpression
+        BuildValueExpression = BuildExpression,
+        RequiredHelpers = { FlowHelperNames.GetLife }
     };
 
     private static string BuildExpression(FlowGenerationContext context, BlockInstance block)

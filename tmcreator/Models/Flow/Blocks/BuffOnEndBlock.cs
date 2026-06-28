@@ -7,6 +7,17 @@ public static class BuffOnEndBlock
         Id = "buff_on_end",
         Name = "效果消失时",
         Category = BlockCategory.Event,
-        EventComment = "When this buff ends"
+        EventComment = "When this buff ends",
+        EventDescriptor = new()
+        {
+            Host = FlowEventHost.Buff,
+            AppendBuffInactiveCode = AppendInactive
+        }
     };
+
+    private static void AppendInactive(FlowEventGenerationContext context, IReadOnlyList<FlowEventGroup> groups)
+    {
+        if (groups.Count > 0)
+            context.AppendGroupBodies(groups, 16, "player.GetSource_FromThis()");
+    }
 }

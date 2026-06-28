@@ -11,7 +11,8 @@ public static class BroadcastBlock
         {
             new() { Name = "message", Label = "消息内容", Type = ParamType.Text, DefaultValue = "Hello World!" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.Broadcast }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

@@ -11,7 +11,8 @@ public static class PlaySoundBlock
         {
             new() { Name = "sound", Label = "声音ID", Type = ParamType.Number, DefaultValue = "1" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.PlaySound }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

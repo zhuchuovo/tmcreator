@@ -56,4 +56,17 @@ public static class BlockRegistry
 
     public static BlockDefinition? Get(string id) =>
         AllBlocks.FirstOrDefault(b => b.Id == id);
+
+    public static List<BlockDefinition> GetEventsByHost(FlowEventHost host) =>
+        AllBlocks
+            .Where(b => b.Category == BlockCategory.Event && b.EventDescriptor?.Host == host)
+            .ToList();
+
+    public static string GetDefaultEventId(FlowEventHost host) =>
+        GetEventsByHost(host).FirstOrDefault(b => b.EventDescriptor?.IsDefault == true)?.Id
+        ?? GetEventsByHost(host).FirstOrDefault()?.Id
+        ?? "";
+
+    public static HashSet<string> GetEventIds(FlowEventHost host) =>
+        GetEventsByHost(host).Select(b => b.Id).ToHashSet();
 }

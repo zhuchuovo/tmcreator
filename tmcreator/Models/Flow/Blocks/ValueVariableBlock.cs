@@ -11,7 +11,8 @@ public static class ValueVariableBlock
         {
             new() { Name = "name", Label = "变量名", Type = ParamType.Text, DefaultValue = "myValue" }
         },
-        BuildValueExpression = BuildExpression
+        BuildValueExpression = BuildExpression,
+        RequiredHelpers = { FlowHelperNames.GetVariable }
     };
 
     private static string BuildExpression(FlowGenerationContext context, BlockInstance block)

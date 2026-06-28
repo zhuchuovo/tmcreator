@@ -14,7 +14,8 @@ public static class SpawnParticlesBlock
             new() { Name = "amount", Label = "数量", Type = ParamType.Number, DefaultValue = "12" },
             new() { Name = "speed", Label = "速度", Type = ParamType.Number, DefaultValue = "2" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer, FlowHelperNames.SpawnParticles }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

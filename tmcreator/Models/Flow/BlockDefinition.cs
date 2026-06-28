@@ -43,6 +43,9 @@ public class BlockDefinition
     public Action<FlowGenerationContext, BlockInstance, int>? AppendStatement { get; set; }
     public Func<FlowGenerationContext, BlockInstance, string>? BuildCondition { get; set; }
     public Func<FlowGenerationContext, BlockInstance, string>? BuildValueExpression { get; set; }
+    public FlowEventDescriptor? EventDescriptor { get; set; }
+    public HashSet<string> RequiredHelpers { get; set; } = new();
+    public List<FlowHelperDefinition> ProvidedHelpers { get; set; } = new();
 
     public Color Color => Category switch
     {

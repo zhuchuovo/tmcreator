@@ -13,7 +13,8 @@ public static class DealDamageBlock
             new() { Name = "amount", Label = "伤害值", Type = ParamType.Number, DefaultValue = "100" },
             new() { Name = "damage_type", Label = "伤害类型", Type = ParamType.DamageType, DefaultValue = "melee" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer, FlowHelperNames.DamageNpc, FlowHelperNames.DamagePlayer }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

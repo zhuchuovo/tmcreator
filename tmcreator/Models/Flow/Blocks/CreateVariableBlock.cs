@@ -12,7 +12,8 @@ public static class CreateVariableBlock
             new() { Name = "name", Label = "变量名", Type = ParamType.Text, DefaultValue = "myValue" },
             new() { Name = "value", Label = "数值", Type = ParamType.Number, DefaultValue = "0" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.SetVariable }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

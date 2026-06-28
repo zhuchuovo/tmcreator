@@ -11,7 +11,8 @@ public static class KillNpcBlock
         {
             new() { Name = "target", Label = "目标", Type = ParamType.Target, DefaultValue = "npc" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer, FlowHelperNames.DamageNpc, FlowHelperNames.DamagePlayer }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

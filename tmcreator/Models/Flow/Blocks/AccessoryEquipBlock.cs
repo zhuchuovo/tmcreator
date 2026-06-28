@@ -7,6 +7,23 @@ public static class AccessoryEquipBlock
         Id = "accessory_equip",
         Name = "安装饰品时",
         Category = BlockCategory.Event,
-        EventComment = "When this accessory is equipped"
+        EventComment = "When this accessory is equipped",
+        EventDescriptor = new()
+        {
+            Host = FlowEventHost.Accessory,
+            AppendAccessoryUpdateCode = AppendUpdate
+        }
     };
+
+    private static void AppendUpdate(FlowEventGenerationContext context, IReadOnlyList<FlowEventGroup> groups)
+    {
+        if (groups.Count == 0)
+            return;
+
+        var sb = context.Builder;
+        sb.AppendLine("            if (firstEquipTick)");
+        sb.AppendLine("            {");
+        context.AppendGroupBodies(groups, 16, "player.GetSource_FromThis()");
+        sb.AppendLine("            }");
+    }
 }

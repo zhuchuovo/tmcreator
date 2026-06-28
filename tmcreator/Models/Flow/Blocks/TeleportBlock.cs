@@ -13,7 +13,8 @@ public static class TeleportBlock
             new() { Name = "x", Label = "X坐标", Type = ParamType.Number, DefaultValue = "0" },
             new() { Name = "y", Label = "Y坐标", Type = ParamType.Number, DefaultValue = "0" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

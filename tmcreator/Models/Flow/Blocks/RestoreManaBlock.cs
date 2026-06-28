@@ -12,7 +12,8 @@ public static class RestoreManaBlock
             new() { Name = "target", Label = "目标", Type = ParamType.Target, DefaultValue = "player" },
             new() { Name = "amount", Label = "魔力量", Type = ParamType.Number, DefaultValue = "20" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachPlayer, FlowHelperNames.RestoreMana }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

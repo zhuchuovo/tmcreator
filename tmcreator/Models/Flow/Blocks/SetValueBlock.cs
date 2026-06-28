@@ -13,7 +13,8 @@ public static class SetValueBlock
             new() { Name = "stat", Label = "属性", Type = ParamType.Dropdown, DefaultValue = "life", Options = new[] { "life", "damage", "defense" } },
             new() { Name = "value", Label = "值", Type = ParamType.Number, DefaultValue = "0" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer, FlowHelperNames.SetNpcValue, FlowHelperNames.SetPlayerValue }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)

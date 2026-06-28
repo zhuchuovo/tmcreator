@@ -72,11 +72,12 @@ namespace tmcreator
         private readonly UIButton btnSaveProject = new();
         private readonly UIButton btnRenameProject = new();
         private readonly UIButton btnImportBlock = new();
+        private readonly UIButton btnEffectPreview = new();
         private RecipeData _currentRecipe = new();
         private string _projectName = "未命名工程";
         private string _projectDescription = string.Empty;
         private string _projectIconPath = string.Empty;
-        private string _buildVersion = "1.3";
+        private string _buildVersion = "1.4";
         private string _buildAuthor = string.Empty;
         private string _buildHomepage = string.Empty;
         private string? _projectFilePath;
@@ -89,6 +90,9 @@ namespace tmcreator
         private static readonly HashSet<string> BuffFlowEventIds = FlowCodeGenerator.BuffFlowEventIds;
         private static readonly HashSet<string> ProjectileFlowEventIds = FlowCodeGenerator.ProjectileFlowEventIds;
         private static readonly HashSet<string> AccessoryFlowEventIds = FlowCodeGenerator.AccessoryFlowEventIds;
+        private static readonly string BuffDefaultFlowEventId = FlowCodeGenerator.BuffDefaultEventId;
+        private static readonly string ProjectileDefaultFlowEventId = FlowCodeGenerator.ProjectileDefaultEventId;
+        private static readonly string AccessoryDefaultFlowEventId = FlowCodeGenerator.AccessoryDefaultEventId;
 
         private static readonly Color ClrBg = Color.FromArgb(14, 20, 28);
         private static readonly Color ClrPanelBg = Color.FromArgb(22, 31, 43);
@@ -707,6 +711,14 @@ namespace tmcreator
             btnImportBlock.Click += ImportBlock_Click;
             pnlRight.Controls.Add(btnImportBlock);
 
+            btnEffectPreview.Text = "特效预览";
+            btnEffectPreview.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold, GraphicsUnit.Point);
+            btnEffectPreview.Size = new Size(104, 36);
+            StyleButton(btnEffectPreview, Color.FromArgb(160, 122, 235), Color.FromArgb(120, 90, 175));
+            btnEffectPreview.Click -= EffectPreview_Click;
+            btnEffectPreview.Click += EffectPreview_Click;
+            pnlRight.Controls.Add(btnEffectPreview);
+
             flowItems.AutoScroll = true;
             flowItems.FlowDirection = FlowDirection.TopDown;
             flowItems.WrapContents = false;
@@ -1074,8 +1086,9 @@ namespace tmcreator
 
             btnExport.Location = new Point(Math.Max(24, pnlRight.Width - btnExport.Width - 24), 24);
             btnImportBlock.Location = new Point(Math.Max(24, btnExport.Left - btnImportBlock.Width - 12), 24);
+            btnEffectPreview.Location = new Point(Math.Max(24, btnImportBlock.Left - btnEffectPreview.Width - 12), 24);
             if (_rightSubtitleLabel != null)
-                _rightSubtitleLabel.Width = Math.Max(260, btnImportBlock.Left - _rightSubtitleLabel.Left - 24);
+                _rightSubtitleLabel.Width = Math.Max(260, btnEffectPreview.Left - _rightSubtitleLabel.Left - 24);
             flowItems.SetBounds(24, 84, pnlRight.Width - 48, pnlRight.Height - 108);
             _emptyStateLabel.Bounds = flowItems.Bounds;
             _emptyStateLabel.BringToFront();
@@ -1598,6 +1611,12 @@ namespace tmcreator
             {
                 UIMessageBox.Show($"导入块失败：{ex.Message}");
             }
+        }
+
+        private void EffectPreview_Click(object? sender, EventArgs e)
+        {
+            using var form = new EffectPreviewForm();
+            form.ShowDialog(this);
         }
 
         private void ExportItemBlock(ModItemData item)
@@ -2278,7 +2297,7 @@ namespace tmcreator
             _projectName = string.IsNullOrWhiteSpace(projectName) ? "未命名工程" : projectName.Trim();
             _projectDescription = string.Empty;
             _projectIconPath = string.Empty;
-            _buildVersion = "1.3";
+            _buildVersion = "1.4";
             _buildAuthor = string.Empty;
             _buildHomepage = string.Empty;
             _projectFilePath = null;
@@ -2297,7 +2316,7 @@ namespace tmcreator
             _projectName = string.IsNullOrWhiteSpace(project.ProjectName) ? "未命名工程" : project.ProjectName.Trim();
             _projectDescription = project.ProjectDescription ?? string.Empty;
             _projectIconPath = ResolveProjectPath(project.ProjectIconPath, projectDir);
-            _buildVersion = string.IsNullOrWhiteSpace(project.BuildVersion) ? "1.3" : project.BuildVersion.Trim();
+            _buildVersion = string.IsNullOrWhiteSpace(project.BuildVersion) ? "1.4" : project.BuildVersion.Trim();
             _buildAuthor = project.BuildAuthor ?? string.Empty;
             _buildHomepage = project.BuildHomepage ?? string.Empty;
             _projectFilePath = filePath;
@@ -3286,7 +3305,7 @@ namespace tmcreator
         {
             var sb = new System.Text.StringBuilder();
             bool hasFlow = item.Flow?.Blocks.Count > 0;
-            bool hasAccessoryFlow = item.Type == ItemType.Accessory && HasFlowEvents(item.Flow, AccessoryFlowEventIds, "accessory_wearing");
+            bool hasAccessoryFlow = item.Type == ItemType.Accessory && HasFlowEvents(item.Flow, AccessoryFlowEventIds, AccessoryDefaultFlowEventId);
             bool hasAnimation = item.IsMultiFrameTexture && item.TextureFrameCount > 1;
             if (hasFlow)
             {
@@ -3442,7 +3461,7 @@ namespace tmcreator
         private string GenerateBuffCode(ModItemData item, string className)
         {
             var sb = new System.Text.StringBuilder();
-            bool hasFlow = HasFlowEvents(item.Flow, BuffFlowEventIds, "buff_update");
+            bool hasFlow = HasFlowEvents(item.Flow, BuffFlowEventIds, BuffDefaultFlowEventId);
 
             if (hasFlow)
             {
@@ -3482,7 +3501,7 @@ namespace tmcreator
         private string GenerateProjectileCode(ModItemData item, string className)
         {
             var sb = new System.Text.StringBuilder();
-            bool hasFlow = HasFlowEvents(item.Flow, ProjectileFlowEventIds, "projectile_update");
+            bool hasFlow = HasFlowEvents(item.Flow, ProjectileFlowEventIds, ProjectileDefaultFlowEventId);
             bool isWhipProjectile = item.IsWhipProjectile && item.DamageKind == ModDamageKind.Summon;
             bool usesBoneWhipTexture = isWhipProjectile && string.IsNullOrWhiteSpace(item.TexturePath);
             bool hasAnimation = !isWhipProjectile && item.IsMultiFrameTexture && item.TextureFrameCount > 1;

@@ -16,7 +16,8 @@ public static class TemporaryStatBlock
             new() { Name = "damage_type", Label = "职业", Type = ParamType.DamageType, DefaultValue = "generic" },
             new() { Name = "duration", Label = "持续(秒)", Type = ParamType.Number, DefaultValue = "5" }
         },
-        AppendStatement = Append
+        AppendStatement = Append,
+        RequiredHelpers = { FlowHelperNames.ForEachNpc, FlowHelperNames.ForEachPlayer, FlowHelperNames.AddTemporaryNpcStat, FlowHelperNames.AddTemporaryPlayerStat }
     };
 
     private static void Append(FlowGenerationContext context, BlockInstance block, int indent)
