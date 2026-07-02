@@ -35,6 +35,9 @@ namespace tmcreator
         private Label? _lblUseStyleId;
         private Label? _lblManaCost;
         private Label? _lblAmmoType;
+        private Label? _lblUseSound;
+        private Label? _lblWeaponOffsetX;
+        private Label? _lblWeaponOffsetY;
         private Label? _rightSubtitleLabel;
         private Label? _emptyStateLabel;
         private readonly UIComboBox cmbDamageKind = new();
@@ -46,6 +49,9 @@ namespace tmcreator
         private readonly UICheckBox chkUsesAmmo = new();
         private readonly System.Windows.Forms.TextBox txtProjectileId = new();
         private readonly System.Windows.Forms.TextBox txtAmmoType = new();
+        private readonly System.Windows.Forms.TextBox txtUseSound = new();
+        private readonly NumericUpDown numWeaponOffsetX = new();
+        private readonly NumericUpDown numWeaponOffsetY = new();
         private readonly NumericUpDown numProjectileSpeed = new();
         private readonly NumericUpDown numVanillaBuffIconId = new();
         private readonly NumericUpDown numUseStyleId = new();
@@ -505,6 +511,28 @@ namespace tmcreator
             txtAmmoType.Text = "Bullet";
             _combatSection.Controls.Add(txtAmmoType);
 
+            _lblUseSound = AddFieldLabel(_combatSection, "音效ID", 18, 354, 72);
+            txtUseSound.Location = new Point(96, 350);
+            txtUseSound.Size = new Size(196, 26);
+            txtUseSound.Font = FontBody;
+            ConfigureUseSoundTextBox(txtUseSound);
+            txtUseSound.Text = "Auto";
+            _combatSection.Controls.Add(txtUseSound);
+
+            _lblWeaponOffsetX = AddNumericField(_combatSection, "武器偏移X", numWeaponOffsetX, 18, 390, 72);
+            numWeaponOffsetX.Minimum = -999;
+            numWeaponOffsetX.Maximum = 999;
+            numWeaponOffsetX.DecimalPlaces = 1;
+            numWeaponOffsetX.Increment = 0.5M;
+            numWeaponOffsetX.Value = 0;
+
+            _lblWeaponOffsetY = AddNumericField(_combatSection, "武器偏移Y", numWeaponOffsetY, 196, 390, 72);
+            numWeaponOffsetY.Minimum = -999;
+            numWeaponOffsetY.Maximum = 999;
+            numWeaponOffsetY.DecimalPlaces = 1;
+            numWeaponOffsetY.Increment = 0.5M;
+            numWeaponOffsetY.Value = 0;
+
             _formStack?.Controls.Add(_combatSection);
         }
 
@@ -901,6 +929,23 @@ namespace tmcreator
             textBox.AutoCompleteCustomSource = autoComplete;
         }
 
+        private static void ConfigureUseSoundTextBox(System.Windows.Forms.TextBox textBox)
+        {
+            textBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            textBox.AutoCompleteSource = AutoCompleteSource.CustomSource;
+            textBox.BorderStyle = BorderStyle.FixedSingle;
+            textBox.BackColor = ClrInputBg;
+            textBox.ForeColor = ClrText;
+
+            var values = new List<string> { "Auto", "None" };
+            values.AddRange(Enumerable.Range(1, 200).Select(id => $"Item{id}"));
+            values.AddRange(Enumerable.Range(1, 200).Select(id => $"SoundID.Item{id}"));
+
+            var autoComplete = new AutoCompleteStringCollection();
+            autoComplete.AddRange(values.ToArray());
+            textBox.AutoCompleteCustomSource = autoComplete;
+        }
+
         private void UpdateProjectileReferenceOptions()
         {
             var references = _items
@@ -954,6 +999,25 @@ namespace tmcreator
                 return string.Empty;
 
             return value;
+        }
+
+        private static string NormalizeUseSound(string? useSound)
+        {
+            string value = useSound?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(value) ||
+                value.Equals("Auto", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("Default", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("自动", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("默认", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            return value;
+        }
+
+        private static string GetUseSoundText(string? useSound)
+        {
+            string value = NormalizeUseSound(useSound);
+            return string.IsNullOrWhiteSpace(value) ? "Auto" : value;
         }
 
         private static string GetAmmoExpression(string? ammoType)
@@ -1231,6 +1295,9 @@ namespace tmcreator
                 ManaCost = type == ItemType.Weapon ? (int)numManaCost.Value : 0,
                 UsesAmmo = type == ItemType.Weapon && chkUsesAmmo.Checked,
                 AmmoType = type == ItemType.Weapon && chkUsesAmmo.Checked ? NormalizeAmmoType(txtAmmoType.Text) : string.Empty,
+                UseSound = type == ItemType.Weapon ? NormalizeUseSound(txtUseSound.Text) : string.Empty,
+                WeaponOffsetX = type == ItemType.Weapon ? numWeaponOffsetX.Value : 0,
+                WeaponOffsetY = type == ItemType.Weapon ? numWeaponOffsetY.Value : 0,
                 UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
                 ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
                 ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
@@ -1508,6 +1575,9 @@ namespace tmcreator
             SetNumericValue(numManaCost, item.ManaCost);
             chkUsesAmmo.Checked = item.UsesAmmo;
             txtAmmoType.Text = string.IsNullOrWhiteSpace(item.AmmoType) ? "Bullet" : item.AmmoType;
+            txtUseSound.Text = GetUseSoundText(item.UseSound);
+            SetNumericValue(numWeaponOffsetX, item.WeaponOffsetX);
+            SetNumericValue(numWeaponOffsetY, item.WeaponOffsetY);
             chkConsumeOnUse.Checked = item.ConsumeOnUse;
             txtProjectileId.Text = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             SetNumericValue(numProjectileSpeed, item.ProjectileSpeed);
@@ -2044,6 +2114,8 @@ namespace tmcreator
                 if (item.CriticalChance > 0) parts.Add($"暴击 {item.CriticalChance}%");
                 if (item.ManaCost > 0) parts.Add($"魔力 {item.ManaCost}");
                 if (item.UsesAmmo) parts.Add($"弹药 {NormalizeAmmoType(item.AmmoType)}");
+                if (item.Type == ItemType.Weapon && !string.IsNullOrWhiteSpace(NormalizeUseSound(item.UseSound))) parts.Add($"音效 {NormalizeUseSound(item.UseSound)}");
+                if (item.Type == ItemType.Weapon && (item.WeaponOffsetX != 0 || item.WeaponOffsetY != 0)) parts.Add($"武器偏移 X {item.WeaponOffsetX:0.#} / Y {item.WeaponOffsetY:0.#}");
                 if (item.UsesProjectile) parts.Add($"弹幕 {NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId)} / 速度 {item.ProjectileSpeed:0.#}");
                 if (item.ConsumeOnUse) parts.Add("使用消耗");
             }
@@ -2391,6 +2463,9 @@ namespace tmcreator
                 ManaCost = type == ItemType.Weapon ? (int)numManaCost.Value : 0,
                 UsesAmmo = type == ItemType.Weapon && chkUsesAmmo.Checked,
                 AmmoType = type == ItemType.Weapon && chkUsesAmmo.Checked ? NormalizeAmmoType(txtAmmoType.Text) : string.Empty,
+                UseSound = type == ItemType.Weapon ? NormalizeUseSound(txtUseSound.Text) : string.Empty,
+                WeaponOffsetX = type == ItemType.Weapon ? numWeaponOffsetX.Value : 0,
+                WeaponOffsetY = type == ItemType.Weapon ? numWeaponOffsetY.Value : 0,
                 UsesProjectile = !isProjectile && chkUsesProjectile.Checked,
                 ProjectileId = isProjectile ? 1 : GetProjectileIdFallback(txtProjectileId.Text),
                 ProjectileReference = isProjectile ? "1" : GetProjectileReferenceInput(),
@@ -2446,6 +2521,9 @@ namespace tmcreator
             SetNumericValue(numManaCost, draft.ManaCost);
             chkUsesAmmo.Checked = draft.UsesAmmo;
             txtAmmoType.Text = string.IsNullOrWhiteSpace(draft.AmmoType) ? "Bullet" : draft.AmmoType;
+            txtUseSound.Text = GetUseSoundText(draft.UseSound);
+            SetNumericValue(numWeaponOffsetX, draft.WeaponOffsetX);
+            SetNumericValue(numWeaponOffsetY, draft.WeaponOffsetY);
             chkUsesProjectile.Checked = draft.UsesProjectile;
             chkConsumeOnUse.Checked = draft.ConsumeOnUse;
             txtProjectileId.Text = NormalizeProjectileReference(draft.ProjectileReference, draft.ProjectileId);
@@ -2503,6 +2581,9 @@ namespace tmcreator
                    string.IsNullOrWhiteSpace(txtDisplayName.Text) &&
                    string.IsNullOrWhiteSpace(txtDescription.Text) &&
                    string.IsNullOrWhiteSpace(_selectedTexturePath) &&
+                   string.IsNullOrWhiteSpace(NormalizeUseSound(txtUseSound.Text)) &&
+                   numWeaponOffsetX.Value == 0 &&
+                   numWeaponOffsetY.Value == 0 &&
                    _currentRecipe.Ingredients.Count == 0 &&
                    !chkWhipProjectile.Checked &&
                    numDamage.Value == 0 &&
@@ -2597,6 +2678,12 @@ namespace tmcreator
                 item.UseStyleId = item.UsesProjectile ? 5 : 1;
             item.ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId);
             item.AmmoType = NormalizeAmmoType(item.AmmoType);
+            item.UseSound = item.Type == ItemType.Weapon ? NormalizeUseSound(item.UseSound) : string.Empty;
+            if (item.Type != ItemType.Weapon)
+            {
+                item.WeaponOffsetX = 0;
+                item.WeaponOffsetY = 0;
+            }
             if (item.Type != ItemType.Weapon)
             {
                 item.ManaCost = 0;
@@ -2625,6 +2712,9 @@ namespace tmcreator
                 ManaCost = item.ManaCost,
                 UsesAmmo = item.UsesAmmo,
                 AmmoType = item.AmmoType,
+                UseSound = item.UseSound,
+                WeaponOffsetX = item.WeaponOffsetX,
+                WeaponOffsetY = item.WeaponOffsetY,
                 UsesProjectile = item.UsesProjectile,
                 ProjectileId = item.ProjectileId,
                 ProjectileReference = NormalizeProjectileReference(item.ProjectileReference, item.ProjectileId),
@@ -2836,13 +2926,19 @@ namespace tmcreator
 
             bool showWeaponResourceFields = isWeapon;
             bool showAmmoType = showWeaponResourceFields && chkUsesAmmo.Checked;
-            SetControlsVisible(showWeaponResourceFields, _lblManaCost, numManaCost, chkUsesAmmo);
+            SetControlsVisible(showWeaponResourceFields, _lblManaCost, numManaCost, chkUsesAmmo, _lblUseSound, txtUseSound, _lblWeaponOffsetX, numWeaponOffsetX, _lblWeaponOffsetY, numWeaponOffsetY);
             SetControlsVisible(showAmmoType, _lblAmmoType, txtAmmoType);
+            if (_lblUseSound != null)
+                _lblUseSound.Location = showAmmoType ? new Point(18, 354) : new Point(18, 318);
+            txtUseSound.Location = showAmmoType ? new Point(96, 350) : new Point(96, 314);
             if (!showWeaponResourceFields)
             {
                 numManaCost.Value = 0;
                 chkUsesAmmo.Checked = false;
                 txtAmmoType.Text = "Bullet";
+                txtUseSound.Text = "Auto";
+                numWeaponOffsetX.Value = 0;
+                numWeaponOffsetY.Value = 0;
             }
 
             bool canUseWhipProjectile = IsWhipProjectileOptionAvailable();
@@ -2851,7 +2947,7 @@ namespace tmcreator
             if (!canUseWhipProjectile)
                 chkWhipProjectile.Checked = false;
 
-            _combatSection.Height = isProjectile ? 216 : showWeaponResourceFields ? 372 : 300;
+            _combatSection.Height = isProjectile ? 216 : showWeaponResourceFields ? 452 : 300;
             _combatSection.Invalidate();
 
             btnCreate.Text = _editingItem != null ? "保存修改" : isBuff ? "创建 Buff" : isProjectile ? "创建弹幕" : isAccessory ? "创建饰品" : "创建物品";
@@ -2899,12 +2995,13 @@ namespace tmcreator
                 return;
             }
 
+            var type = (ItemType)cmbItemType.SelectedIndex;
             var item = new ModItemData
             {
                 Name = txtName.Text.Trim(),
                 DisplayName = string.IsNullOrWhiteSpace(txtDisplayName.Text) ? txtName.Text.Trim() : txtDisplayName.Text.Trim(),
                 Description = txtDescription.Text.Trim(),
-                Type = (ItemType)cmbItemType.SelectedIndex,
+                Type = type,
                 Width = (int)numWidth.Value,
                 Height = (int)numHeight.Value,
                 Value = (int)numValue.Value,
@@ -2920,6 +3017,9 @@ namespace tmcreator
                 MinPick = (int)numMinPick.Value,
                 AutoReuse = chkAutoReuse.Checked,
                 UseTurn = chkUseTurn.Checked,
+                UseSound = type == ItemType.Weapon ? NormalizeUseSound(txtUseSound.Text) : string.Empty,
+                WeaponOffsetX = type == ItemType.Weapon ? numWeaponOffsetX.Value : 0,
+                WeaponOffsetY = type == ItemType.Weapon ? numWeaponOffsetY.Value : 0,
                 TexturePath = _selectedTexturePath
             };
 
@@ -2944,6 +3044,9 @@ namespace tmcreator
             numManaCost.Value = 0;
             chkUsesAmmo.Checked = false;
             txtAmmoType.Text = "Bullet";
+            txtUseSound.Text = "Auto";
+            numWeaponOffsetX.Value = 0;
+            numWeaponOffsetY.Value = 0;
             chkUsesProjectile.Checked = false;
             chkConsumeOnUse.Checked = false;
             txtProjectileId.Text = "1";
@@ -3110,6 +3213,8 @@ namespace tmcreator
                 parts.Add($"使用时间: {item.UseTime}");
                 if (item.Knockback > 0) parts.Add($"击退: {item.Knockback}");
                 if (item.CriticalChance > 0) parts.Add($"暴击: {item.CriticalChance}%");
+                if (item.Type == ItemType.Weapon && !string.IsNullOrWhiteSpace(NormalizeUseSound(item.UseSound))) parts.Add($"音效: {NormalizeUseSound(item.UseSound)}");
+                if (item.Type == ItemType.Weapon && (item.WeaponOffsetX != 0 || item.WeaponOffsetY != 0)) parts.Add($"武器偏移: X {item.WeaponOffsetX:0.#} / Y {item.WeaponOffsetY:0.#}");
             }
 
             if (item.Type == ItemType.Tool)
@@ -3307,9 +3412,16 @@ namespace tmcreator
             bool hasFlow = item.Flow?.Blocks.Count > 0;
             bool hasAccessoryFlow = item.Type == ItemType.Accessory && HasFlowEvents(item.Flow, AccessoryFlowEventIds, AccessoryDefaultFlowEventId);
             bool hasAnimation = item.IsMultiFrameTexture && item.TextureFrameCount > 1;
+            bool hasBaseWeaponOffset = item.Type == ItemType.Weapon && (item.WeaponOffsetX != 0 || item.WeaponOffsetY != 0);
+            bool hasFlowWeaponOffset = item.Type is ItemType.Tool or ItemType.Weapon or ItemType.Block or ItemType.Item &&
+                                       FlowCodeGenerator.HasBlock(item.Flow, "set_weapon_holdout_offset");
+            bool hasWeaponOffset = hasBaseWeaponOffset || hasFlowWeaponOffset;
             if (hasFlow)
             {
                 sb.AppendLine("using System;");
+            }
+            if (hasFlow || hasWeaponOffset)
+            {
                 sb.AppendLine("using Microsoft.Xna.Framework;");
             }
             sb.AppendLine("using Terraria;");
@@ -3329,6 +3441,12 @@ namespace tmcreator
             sb.AppendLine("{");
             sb.AppendLine($"    public class {className} : ModItem");
             sb.AppendLine("    {");
+            if (hasFlowWeaponOffset)
+            {
+                sb.AppendLine("        private Vector2 _flowWeaponHoldoutOffset;");
+                sb.AppendLine("        private int _flowWeaponHoldoutOffsetTicks;");
+                sb.AppendLine();
+            }
             if (hasAnimation)
             {
                 sb.AppendLine("        public override void SetStaticDefaults()");
@@ -3350,6 +3468,8 @@ namespace tmcreator
 
             if (item.Type == ItemType.Tool || item.Type == ItemType.Weapon)
             {
+                bool usesAmmoFallbackProjectile = item.Type == ItemType.Weapon && item.UsesAmmo && !item.UsesProjectile;
+
                 if (item.Damage > 0)
                 {
                     sb.AppendLine($"            Item.damage = {item.Damage};");
@@ -3362,9 +3482,9 @@ namespace tmcreator
                 sb.AppendLine($"            Item.useTime = {item.UseTime};");
                 sb.AppendLine($"            Item.useAnimation = {item.UseAnimation};");
                 sb.AppendLine($"            Item.useStyle = {GetUseStyleId(item)};");
-                sb.AppendLine(item.UsesProjectile
-                    ? "            Item.UseSound = SoundID.Item5;"
-                    : "            Item.UseSound = SoundID.Item1;");
+                string useSoundExpression = GetUseSoundExpression(item, usesAmmoFallbackProjectile, GetProjectCodeName());
+                if (!string.IsNullOrWhiteSpace(useSoundExpression))
+                    sb.AppendLine($"            Item.UseSound = {useSoundExpression};");
 
                 if (item.Knockback > 0)
                     sb.AppendLine($"            Item.knockBack = {item.Knockback};");
@@ -3378,9 +3498,12 @@ namespace tmcreator
                 if (item.UseTurn)
                     sb.AppendLine("            Item.useTurn = true;");
 
-                if (item.UsesProjectile)
+                if (item.UsesProjectile || usesAmmoFallbackProjectile)
                 {
-                    sb.AppendLine($"            Item.shoot = {GetProjectileTypeExpression(item.ProjectileReference, item.ProjectileId.ToString(System.Globalization.CultureInfo.InvariantCulture), GetProjectCodeName())};");
+                    string shootExpression = item.UsesProjectile
+                        ? GetProjectileTypeExpression(item.ProjectileReference, item.ProjectileId.ToString(System.Globalization.CultureInfo.InvariantCulture), GetProjectCodeName())
+                        : "ProjectileID.Bullet";
+                    sb.AppendLine($"            Item.shoot = {shootExpression};");
                     sb.AppendLine($"            Item.shootSpeed = {FormatFloatLiteral(item.ProjectileSpeed)};");
                     sb.AppendLine("            Item.noMelee = true;");
                 }
@@ -3423,6 +3546,11 @@ namespace tmcreator
             }
 
             sb.AppendLine("        }");
+
+            if (hasWeaponOffset)
+            {
+                AppendWeaponHoldoutOffsetCode(sb, item, hasFlowWeaponOffset);
+            }
 
             if (item.Type == ItemType.Accessory && (HasAccessoryStats(item) || hasAccessoryFlow))
             {
@@ -3611,6 +3739,44 @@ namespace tmcreator
                    item.AccessoryDamageReduction > 0;
         }
 
+        private static void AppendWeaponHoldoutOffsetCode(System.Text.StringBuilder sb, ModItemData item, bool hasFlowWeaponOffset)
+        {
+            string baseX = FormatFloatLiteral(item.WeaponOffsetX);
+            string baseY = FormatFloatLiteral(item.WeaponOffsetY);
+
+            sb.AppendLine();
+            sb.AppendLine("        public override Vector2? HoldoutOffset()");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            Vector2 offset = new Vector2({baseX}, {baseY});");
+            if (hasFlowWeaponOffset)
+            {
+                sb.AppendLine("            if (_flowWeaponHoldoutOffsetTicks > 0)");
+                sb.AppendLine("                offset = _flowWeaponHoldoutOffset;");
+            }
+            sb.AppendLine("            return offset.LengthSquared() <= 0.0001f ? null : offset;");
+            sb.AppendLine("        }");
+
+            if (!hasFlowWeaponOffset)
+                return;
+
+            sb.AppendLine();
+            sb.AppendLine("        public override void UpdateInventory(Player player)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            if (_flowWeaponHoldoutOffsetTicks <= 0)");
+            sb.AppendLine("                return;");
+            sb.AppendLine();
+            sb.AppendLine("            _flowWeaponHoldoutOffsetTicks--;");
+            sb.AppendLine("            if (_flowWeaponHoldoutOffsetTicks <= 0)");
+            sb.AppendLine("                _flowWeaponHoldoutOffset = Vector2.Zero;");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        private void Flow_SetWeaponHoldoutOffset(float x, float y)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            _flowWeaponHoldoutOffset = new Vector2(x, y);");
+            sb.AppendLine("            _flowWeaponHoldoutOffsetTicks = 2;");
+            sb.AppendLine("        }");
+        }
+
         private static void AppendAccessoryUpdateCode(System.Text.StringBuilder sb, ModItemData item, string? accessoryFlowPlayerClassName)
         {
             sb.AppendLine();
@@ -3692,9 +3858,81 @@ namespace tmcreator
 
         private static int GetUseStyleId(ModItemData item)
         {
+            int? flowUseStyleId = FlowCodeGenerator.ResolveItemUseStyleId(item.Flow);
+            if (flowUseStyleId.HasValue)
+                return flowUseStyleId.Value;
+
             return item.UseStyleId > 0
                 ? item.UseStyleId
                 : item.UsesProjectile ? 5 : 1;
+        }
+
+        private static string GetUseSoundExpression(ModItemData item, bool usesAmmoFallbackProjectile, string projectCodeName)
+        {
+            string useSound = item.Type == ItemType.Weapon ? NormalizeUseSound(item.UseSound) : string.Empty;
+            if (string.IsNullOrWhiteSpace(useSound))
+                return item.UsesProjectile || usesAmmoFallbackProjectile ? "SoundID.Item5" : "SoundID.Item1";
+
+            if (IsSilentUseSound(useSound))
+                return string.Empty;
+
+            return GetSoundStyleExpression(useSound, projectCodeName);
+        }
+
+        private static bool IsSilentUseSound(string useSound)
+        {
+            return useSound.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                   useSound.Equals("Silent", StringComparison.OrdinalIgnoreCase) ||
+                   useSound.Equals("无", StringComparison.OrdinalIgnoreCase) ||
+                   useSound.Equals("静音", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetSoundStyleExpression(string useSound, string projectCodeName)
+        {
+            string value = useSound.Trim();
+            if (int.TryParse(value, out int itemSoundId))
+                return $"SoundID.Item{Math.Max(1, itemSoundId)}";
+
+            if (value.StartsWith("SoundID.", StringComparison.OrdinalIgnoreCase))
+            {
+                string identifier = SanitizeIdentifier(value["SoundID.".Length..]);
+                return string.IsNullOrWhiteSpace(identifier) ? "SoundID.Item1" : $"SoundID.{identifier}";
+            }
+
+            if (value.StartsWith("Item", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(value[4..], out itemSoundId))
+                return $"SoundID.Item{Math.Max(1, itemSoundId)}";
+
+            if (value.StartsWith("new Terraria.Audio.SoundStyle(", StringComparison.Ordinal))
+                return value;
+
+            if (value.StartsWith("new SoundStyle(", StringComparison.Ordinal))
+                return "new Terraria.Audio.SoundStyle(" + value["new SoundStyle(".Length..];
+
+            if (value.StartsWith("SoundStyle(", StringComparison.Ordinal))
+                return "new Terraria.Audio." + value;
+
+            if (IsQuotedString(value))
+                return $"new Terraria.Audio.SoundStyle({value})";
+
+            if (value.Contains('/') || value.Contains('\\'))
+            {
+                string path = value.Trim().Trim('"').Replace('\\', '/').TrimStart('/');
+                if (!string.IsNullOrWhiteSpace(projectCodeName) &&
+                    !path.StartsWith(projectCodeName + "/", StringComparison.OrdinalIgnoreCase) &&
+                    !path.StartsWith("Terraria/", StringComparison.OrdinalIgnoreCase))
+                    path = $"{projectCodeName}/{path}";
+
+                return $"new Terraria.Audio.SoundStyle(\"{FlowCodeUtility.EscapeString(path)}\")";
+            }
+
+            string soundIdName = SanitizeIdentifier(value);
+            return string.IsNullOrWhiteSpace(soundIdName) ? "SoundID.Item1" : $"SoundID.{soundIdName}";
+        }
+
+        private static bool IsQuotedString(string value)
+        {
+            return value.Length >= 2 && value[0] == '"' && value[^1] == '"';
         }
 
         private static string GetProjectileTypeExpression(string? reference, string fallback, string projectCodeName)

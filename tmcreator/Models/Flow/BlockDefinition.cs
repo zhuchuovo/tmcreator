@@ -8,6 +8,12 @@ public enum BlockCategory
     Value
 }
 
+public enum ValueExpressionKind
+{
+    Number,
+    Coordinate
+}
+
 public enum ParamType
 {
     Text,
@@ -40,9 +46,12 @@ public class BlockDefinition
     public string TrueLabel { get; set; } = "";
     public string FalseLabel { get; set; } = "";
     public string EventComment { get; set; } = "";
+    public ValueExpressionKind ValueKind { get; set; } = ValueExpressionKind.Number;
+    public Func<FlowGenerationContext, BlockInstance, ValueExpressionKind>? ResolveValueKind { get; set; }
     public Action<FlowGenerationContext, BlockInstance, int>? AppendStatement { get; set; }
     public Func<FlowGenerationContext, BlockInstance, string>? BuildCondition { get; set; }
     public Func<FlowGenerationContext, BlockInstance, string>? BuildValueExpression { get; set; }
+    public Func<BlockInstance, int?>? ResolveItemUseStyleId { get; set; }
     public FlowEventDescriptor? EventDescriptor { get; set; }
     public HashSet<string> RequiredHelpers { get; set; } = new();
     public List<FlowHelperDefinition> ProvidedHelpers { get; set; } = new();

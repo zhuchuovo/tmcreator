@@ -22,6 +22,12 @@ public static class FlowHelperNames
     public const string PlaySound = "Flow_PlaySound";
     public const string SetProjectileSpeed = "Flow_SetProjectileSpeed";
     public const string SpawnParticles = "Flow_SpawnParticles";
+    public const string GetSourcePosition = "Flow_GetSourcePosition";
+    public const string GetEventTargetPosition = "Flow_GetEventTargetPosition";
+    public const string GetNearestPlayerPosition = "Flow_GetNearestPlayerPosition";
+    public const string PlaceTileArea = "Flow_PlaceTileArea";
+    public const string DestroyTileArea = "Flow_DestroyTileArea";
+    public const string StartInvasion = "Flow_StartInvasion";
 }
 
 public sealed class FlowHelperDefinition
@@ -76,6 +82,12 @@ public static class FlowHelperRegistry
         new(FlowHelperNames.PlaySound, AppendPlaySound),
         new(FlowHelperNames.SetProjectileSpeed, AppendSetProjectileSpeed),
         new(FlowHelperNames.SpawnParticles, AppendSpawnParticles),
+        new(FlowHelperNames.GetSourcePosition, AppendGetSourcePosition),
+        new(FlowHelperNames.GetEventTargetPosition, AppendGetEventTargetPosition, FlowHelperNames.GetSourcePosition),
+        new(FlowHelperNames.GetNearestPlayerPosition, AppendGetNearestPlayerPosition, FlowHelperNames.GetEventTargetPosition, FlowHelperNames.GetSourcePosition),
+        new(FlowHelperNames.PlaceTileArea, AppendPlaceTileArea),
+        new(FlowHelperNames.DestroyTileArea, AppendDestroyTileArea),
+        new(FlowHelperNames.StartInvasion, AppendStartInvasion),
     };
 
     public static void AppendRequiredHelpers(
@@ -549,16 +561,37 @@ public static class FlowHelperRegistry
     private static void AppendPlaySound(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
     {
         sb.AppendLine();
-        sb.AppendLine("        private static void Flow_PlaySound(Player player, int soundId)");
+        sb.AppendLine("        private static void Flow_PlaySound(Player player, string soundName)");
         sb.AppendLine("        {");
-        sb.AppendLine("            switch (soundId)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                case 2: SoundEngine.PlaySound(SoundID.Item2, player.Center); break;");
-        sb.AppendLine("                case 3: SoundEngine.PlaySound(SoundID.Item3, player.Center); break;");
-        sb.AppendLine("                case 4: SoundEngine.PlaySound(SoundID.Item4, player.Center); break;");
-        sb.AppendLine("                case 5: SoundEngine.PlaySound(SoundID.Item5, player.Center); break;");
-        sb.AppendLine("                default: SoundEngine.PlaySound(SoundID.Item1, player.Center); break;");
-        sb.AppendLine("            }");
+        sb.AppendLine("            Vector2 position = player != null && player.active ? player.Center : Main.LocalPlayer.Center;");
+        sb.AppendLine("            SoundEngine.PlaySound(Flow_GetSoundStyle(soundName), position);");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        private static SoundStyle Flow_GetSoundStyle(string soundName)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            string value = soundName?.Trim() ?? string.Empty;");
+        sb.AppendLine("            if (string.IsNullOrWhiteSpace(value))");
+        sb.AppendLine("                return SoundID.Item1;");
+        sb.AppendLine();
+        sb.AppendLine("            if (value.StartsWith(\"SoundID.\", StringComparison.OrdinalIgnoreCase))");
+        sb.AppendLine("                value = value[\"SoundID.\".Length..];");
+        sb.AppendLine();
+        sb.AppendLine("            if (value.StartsWith(\"Item\", StringComparison.OrdinalIgnoreCase) && int.TryParse(value[4..], out int itemSoundId))");
+        sb.AppendLine("                return GetItemSound(itemSoundId);");
+        sb.AppendLine();
+        sb.AppendLine("            if (int.TryParse(value, out int numericSoundId))");
+        sb.AppendLine("                return GetItemSound(numericSoundId);");
+        sb.AppendLine();
+        sb.AppendLine("            var field = typeof(SoundID).GetField(value, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);");
+        sb.AppendLine("            return field?.GetValue(null) is SoundStyle style ? style : SoundID.Item1;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        private static SoundStyle GetItemSound(int soundId)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            soundId = Math.Clamp(soundId, 1, 200);");
+        sb.AppendLine("            string fieldName = \"Item\" + soundId.ToString(System.Globalization.CultureInfo.InvariantCulture);");
+        sb.AppendLine("            var field = typeof(SoundID).GetField(fieldName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);");
+        sb.AppendLine("            return field?.GetValue(null) is SoundStyle style ? style : SoundID.Item1;");
         sb.AppendLine("        }");
     }
 
@@ -595,6 +628,125 @@ public static class FlowHelperRegistry
         sb.AppendLine("                Vector2 velocity = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * magnitude;");
         sb.AppendLine("                Dust.NewDustPerfect(center, dustId, velocity, 150, Color.White, 1f);");
         sb.AppendLine("            }");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendGetSourcePosition(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static Vector2 Flow_GetSourcePosition(Player player)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            return player != null && player.active ? player.Center : Vector2.Zero;");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendGetEventTargetPosition(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static Vector2 Flow_GetEventTargetPosition(Player player, NPC npc, Player targetPlayer)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (npc != null && npc.active)");
+        sb.AppendLine("                return npc.Center;");
+        sb.AppendLine("            if (targetPlayer != null && targetPlayer.active && !targetPlayer.dead)");
+        sb.AppendLine("                return targetPlayer.Center;");
+        sb.AppendLine("            return Flow_GetSourcePosition(player);");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendGetNearestPlayerPosition(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static Vector2 Flow_GetNearestPlayerPosition(Player player, NPC npc, Player targetPlayer)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            Vector2 origin = Flow_GetEventTargetPosition(player, npc, targetPlayer);");
+        sb.AppendLine("            Player nearest = null;");
+        sb.AppendLine("            float nearestDistance = float.MaxValue;");
+        sb.AppendLine();
+        sb.AppendLine("            for (int i = 0; i < Main.maxPlayers; i++)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                Player candidate = Main.player[i];");
+        sb.AppendLine("                if (candidate == null || !candidate.active || candidate.dead)");
+        sb.AppendLine("                    continue;");
+        sb.AppendLine();
+        sb.AppendLine("                float distance = Vector2.DistanceSquared(origin, candidate.Center);");
+        sb.AppendLine("                if (distance < nearestDistance)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    nearest = candidate;");
+        sb.AppendLine("                    nearestDistance = distance;");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine();
+        sb.AppendLine("            return nearest != null ? nearest.Center : Flow_GetSourcePosition(player);");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendPlaceTileArea(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static void Flow_PlaceTileArea(Vector2 startWorld, Vector2 endWorld, int tileType)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (tileType < 0)");
+        sb.AppendLine("                return;");
+        sb.AppendLine();
+        sb.AppendLine("            int minX = Math.Clamp((int)Math.Floor(Math.Min(startWorld.X, endWorld.X) / 16f), 0, Main.maxTilesX - 1);");
+        sb.AppendLine("            int maxX = Math.Clamp((int)Math.Floor(Math.Max(startWorld.X, endWorld.X) / 16f), 0, Main.maxTilesX - 1);");
+        sb.AppendLine("            int minY = Math.Clamp((int)Math.Floor(Math.Min(startWorld.Y, endWorld.Y) / 16f), 0, Main.maxTilesY - 1);");
+        sb.AppendLine("            int maxY = Math.Clamp((int)Math.Floor(Math.Max(startWorld.Y, endWorld.Y) / 16f), 0, Main.maxTilesY - 1);");
+        sb.AppendLine();
+        sb.AppendLine("            for (int i = minX; i <= maxX; i++)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                for (int j = minY; j <= maxY; j++)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    WorldGen.PlaceTile(i, j, tileType, true, true);");
+        sb.AppendLine("                    if (Main.netMode == NetmodeID.Server)");
+        sb.AppendLine("                        NetMessage.SendTileSquare(-1, i, j);");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendDestroyTileArea(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static void Flow_DestroyTileArea(Vector2 startWorld, Vector2 endWorld, int tileType)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            int minX = Math.Clamp((int)Math.Floor(Math.Min(startWorld.X, endWorld.X) / 16f), 0, Main.maxTilesX - 1);");
+        sb.AppendLine("            int maxX = Math.Clamp((int)Math.Floor(Math.Max(startWorld.X, endWorld.X) / 16f), 0, Main.maxTilesX - 1);");
+        sb.AppendLine("            int minY = Math.Clamp((int)Math.Floor(Math.Min(startWorld.Y, endWorld.Y) / 16f), 0, Main.maxTilesY - 1);");
+        sb.AppendLine("            int maxY = Math.Clamp((int)Math.Floor(Math.Max(startWorld.Y, endWorld.Y) / 16f), 0, Main.maxTilesY - 1);");
+        sb.AppendLine();
+        sb.AppendLine("            for (int i = minX; i <= maxX; i++)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                for (int j = minY; j <= maxY; j++)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    Tile tile = Framing.GetTileSafely(i, j);");
+        sb.AppendLine("                    if (!tile.HasTile || (tileType >= 0 && tile.TileType != tileType))");
+        sb.AppendLine("                        continue;");
+        sb.AppendLine();
+        sb.AppendLine("                    WorldGen.KillTile(i, j, false, false, true);");
+        sb.AppendLine("                    if (Main.netMode == NetmodeID.Server)");
+        sb.AppendLine("                        NetMessage.SendTileSquare(-1, i, j);");
+        sb.AppendLine("                }");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+    }
+
+    private static void AppendStartInvasion(System.Text.StringBuilder sb, FlowHelperGenerationContext context)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        private static void Flow_StartInvasion(string invasion)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (Main.netMode == NetmodeID.MultiplayerClient)");
+        sb.AppendLine("                return;");
+        sb.AppendLine();
+        sb.AppendLine("            int invasionType = invasion switch");
+        sb.AppendLine("            {");
+        sb.AppendLine("                \"pirate\" => InvasionID.PirateInvasion,");
+        sb.AppendLine("                \"martian\" => InvasionID.MartianMadness,");
+        sb.AppendLine("                _ => InvasionID.GoblinArmy");
+        sb.AppendLine("            };");
+        sb.AppendLine();
+        sb.AppendLine("            Main.StartInvasion(invasionType);");
         sb.AppendLine("        }");
     }
 }

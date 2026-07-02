@@ -18,13 +18,41 @@ public static class FlowCodeGenerator
             .Any(group => eventIds.Contains(group.EventId));
     }
 
+    public static int? ResolveItemUseStyleId(FlowScript? flow)
+    {
+        if (flow == null || flow.Blocks.Count == 0)
+            return null;
+
+        foreach (var block in EnumerateBlocks(flow.Blocks))
+        {
+            var useStyleId = BlockRegistry.Get(block.BlockDefId)?.ResolveItemUseStyleId?.Invoke(block);
+            if (useStyleId.HasValue)
+                return useStyleId.Value;
+        }
+
+        return null;
+    }
+
+    public static bool HasBlock(FlowScript? flow, string blockId)
+    {
+        if (flow == null || flow.Blocks.Count == 0 || string.IsNullOrWhiteSpace(blockId))
+            return false;
+
+        return EnumerateBlocks(flow.Blocks).Any(block => block.BlockDefId == blockId);
+    }
+
     public static void AppendItemFlowCode(System.Text.StringBuilder sb, FlowScript flow, string tempStatPlayerClassName, string tempStatNpcClassName, string projectCodeName)
     {
         var groups = BuildFlowEventGroups(flow.Blocks, BlockRegistry.GetDefaultEventId(FlowEventHost.Item));
         if (groups.Count == 0)
             return;
 
-        var context = new FlowEventGenerationContext(sb, projectCodeName, tempStatPlayerClassName, tempStatNpcClassName);
+        var context = new FlowEventGenerationContext(
+            sb,
+            projectCodeName,
+            tempStatPlayerClassName,
+            tempStatNpcClassName,
+            canModifyItemHoldoutOffset: true);
         sb.AppendLine();
         sb.AppendLine("        // Generated visual flow logic.");
         AppendEventBlocks(context, FlowEventHost.Item, groups, descriptor => descriptor.AppendCode);
@@ -306,6 +334,21 @@ public static class FlowCodeGenerator
         foreach (var block in blocks)
             CollectRequiredHelpers(block, helpers);
         return helpers;
+    }
+
+    private static IEnumerable<BlockInstance> EnumerateBlocks(IEnumerable<BlockInstance> blocks)
+    {
+        foreach (var block in blocks)
+        {
+            yield return block;
+
+            foreach (var nestedBlock in EnumerateBlocks(block.ParamBlocks.Values))
+                yield return nestedBlock;
+            foreach (var child in EnumerateBlocks(block.TrueBranch))
+                yield return child;
+            foreach (var child in EnumerateBlocks(block.FalseBranch))
+                yield return child;
+        }
     }
 
     private static void CollectRequiredHelpers(BlockInstance block, FlowHelperCollection helpers)

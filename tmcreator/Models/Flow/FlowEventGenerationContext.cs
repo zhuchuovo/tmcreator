@@ -10,7 +10,8 @@ public sealed class FlowEventGenerationContext
         string accessoryPlayerClassName = "",
         string buffClassName = "",
         bool hasAnimation = false,
-        int frameCount = 1)
+        int frameCount = 1,
+        bool canModifyItemHoldoutOffset = false)
     {
         Builder = builder;
         ProjectCodeName = projectCodeName;
@@ -20,6 +21,7 @@ public sealed class FlowEventGenerationContext
         BuffClassName = buffClassName;
         HasAnimation = hasAnimation;
         FrameCount = frameCount;
+        CanModifyItemHoldoutOffset = canModifyItemHoldoutOffset;
     }
 
     public System.Text.StringBuilder Builder { get; }
@@ -30,6 +32,7 @@ public sealed class FlowEventGenerationContext
     public string BuffClassName { get; }
     public bool HasAnimation { get; }
     public int FrameCount { get; }
+    public bool CanModifyItemHoldoutOffset { get; }
 
     public void AppendGroupBodies(
         IEnumerable<FlowEventGroup> groups,
@@ -37,7 +40,7 @@ public sealed class FlowEventGenerationContext
         string sourceExpression = "player.GetSource_ItemUse(Item)",
         string projectileExpression = "null")
     {
-        var context = new FlowGenerationContext(Builder, sourceExpression, projectileExpression, ProjectCodeName);
+        var context = new FlowGenerationContext(Builder, sourceExpression, projectileExpression, ProjectCodeName, CanModifyItemHoldoutOffset);
         foreach (var group in groups)
         {
             FlowCodeUtility.AppendLine(Builder, indent, $"// {GetEventComment(group.EventId)}");

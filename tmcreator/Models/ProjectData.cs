@@ -31,6 +31,9 @@ public class ProjectDraftData
     public int ManaCost { get; set; }
     public bool UsesAmmo { get; set; }
     public string AmmoType { get; set; } = string.Empty;
+    public string UseSound { get; set; } = string.Empty;
+    public decimal WeaponOffsetX { get; set; }
+    public decimal WeaponOffsetY { get; set; }
     public bool UsesProjectile { get; set; }
     public int ProjectileId { get; set; } = 1;
     public string ProjectileReference { get; set; } = string.Empty;

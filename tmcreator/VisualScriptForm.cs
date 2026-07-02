@@ -1810,7 +1810,8 @@ namespace tmcreator
             };
             RegisterExistingBlockDrag(chip, nestedBlock);
 
-            var label = CreateLabel($"数值: {title}", new Point(14, 4), new Size(Math.Min(210, chip.Width - 82), 18), FontSmall, ClrText);
+            string valueKindLabel = GetPreviewValueKind(nestedBlock) == ValueExpressionKind.Coordinate ? "坐标" : "数值";
+            var label = CreateLabel($"{valueKindLabel}: {title}", new Point(14, 4), new Size(Math.Min(210, chip.Width - 82), 18), FontSmall, ClrText);
             label.Cursor = Cursors.SizeAll;
             RegisterExistingBlockDrag(label, nestedBlock);
 
@@ -1850,12 +1851,38 @@ namespace tmcreator
             {
                 "value_constant" => GetValuePreviewOperand(block, "value", "0"),
                 "value_math" => BuildMathPreview(block),
+                "value_event_target_position" => "事件目标的位置",
+                "value_source_position" => "事件施加者的位置",
+                "value_nearest_player_position" => "最近玩家的位置",
                 "value_npc_hp" => "目标生命值",
                 "value_player_hp" => "玩家生命值",
                 "value_player_mana" => "玩家魔力值",
                 "value_variable" => $"变量 {block.ParamValues.GetValueOrDefault("name", "myValue")}",
                 _ => BlockRegistry.Get(block.BlockDefId)?.Name ?? block.BlockDefId
             };
+        }
+
+        private static ValueExpressionKind GetPreviewValueKind(BlockInstance block)
+        {
+            var definition = BlockRegistry.Get(block.BlockDefId);
+            if (block.BlockDefId != "value_math")
+                return definition?.ValueKind ?? ValueExpressionKind.Number;
+
+            string op = block.ParamValues.GetValueOrDefault("operator", "*");
+            if (op == "=")
+                return ValueExpressionKind.Number;
+
+            return GetPreviewParamValueKind(block, "left") == ValueExpressionKind.Coordinate ||
+                   GetPreviewParamValueKind(block, "right") == ValueExpressionKind.Coordinate
+                ? ValueExpressionKind.Coordinate
+                : ValueExpressionKind.Number;
+        }
+
+        private static ValueExpressionKind GetPreviewParamValueKind(BlockInstance block, string paramName)
+        {
+            return block.ParamBlocks.TryGetValue(paramName, out var nestedBlock)
+                ? GetPreviewValueKind(nestedBlock)
+                : ValueExpressionKind.Number;
         }
 
         private static string BuildMathPreview(BlockInstance block)
